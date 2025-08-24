@@ -144,6 +144,7 @@ AltClickStatus/
 
 * Party/Raid **mouseover** announcements
 * Item/Trinket cooldown announcements
+* Aura and Buff/debuff announcements
 * Message template customization per class/spec
 * Localization
 

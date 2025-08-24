@@ -1,0 +1,6 @@
+# AltClickStatus.toc
+## Interface: 11404
+## Title: Alt-Click Status (MVP)
+## Notes: Announce health/mana and action button spell status to chat with Alt+Click
+## Author: You
+## Version: 0.1.0

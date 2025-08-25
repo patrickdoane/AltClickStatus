@@ -123,6 +123,53 @@ jobs:
             echo "You must commit .pkgmeta and create a NEW tag (e.g., v0.3.0f)."
             exit 1
           fi
+      - name: 'Derive addon name & source dir from TOC (at tag)'
+        id: addonn
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Prefer common WoW layouts first:
+          CANDIDATES=(
+            "AltClickStatus/AltClickStatus.toc"
+            "Interface/AddOns/AltClickStatus/AltClickStatus.toc"
+          )
+          # Fallback: any *.toc (shallow search) – first match wins
+          while IFS= read -r p; do CANDIDATES+=("$p"); done < <(git ls-files | grep -E '\.toc$' || true)
+
+          NAME=""
+          SRC=""
+          for p in "${CANDIDATES[@]}"; do
+            if [[ -f "$p" ]]; then
+              NAME="$(basename "$p" .toc)"
+              SRC="$(dirname "$p")"
+              echo "Using TOC: $p"
+              break
+            fi
+          done
+          if [[ -z "$NAME" || -z "$SRC" ]]; then
+            echo "::error::No .toc found at tag '${{ steps.meta.outputs.tag }}'."
+            exit 1
+          fi
+          echo "name=${NAME}" >> "$GITHUB_OUTPUT"
+          echo "src=${SRC}" >> "$GITHUB_OUTPUT"
+
+      - name: 'Generate .pkgmeta from detected TOC'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > .pkgmeta <<EOF
+          package-as: ${{ steps.addonn.outputs.name }}
+
+          move-folders:
+            ${{ steps.addonn.outputs.src }}: ${{ steps.addonn.outputs.name }}
+
+          ignore:
+            - .git
+            - .github
+            - pkg
+          EOF
+          echo "Generated .pkgmeta:"
+          cat .pkgmeta
 
       - name: 'Upload to CurseForge (BigWigs Packager)'
         uses: BigWigsMods/packager@v2

@@ -1,14 +1,6 @@
 package-as: AltClickStatus
 
-# Support both common repo layouts. Only existing paths are moved.
-move-folders:
-  AltClickStatus: AltClickStatus
-  Interface/AddOns/AltClickStatus: AltClickStatus
-
 ignore:
   - .git
   - .github
   - pkg
-  - README_BADGE_SNIPPET.md
-  - PR_BODY.md
-  - COMMIT_MSG.txt

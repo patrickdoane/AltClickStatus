@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing tag to (re)package, e.g. v0.3.0e"
+        description: "Existing tag to (re)package, e.g. v0.3.0f"
         required: true
-        default: "v0.3.0e"
+        default: "v0.3.0f"
 
 permissions:
   contents: write
@@ -51,28 +51,43 @@ jobs:
             exit 1
           fi
 
-      - name: Locate addon source
-        id: locate
+      - name: Preflight: show repo tree (first 200 files)
+        run: |
+          git ls-tree -r --name-only HEAD | sed -n '1,200p' || true
+
+      - name: Preflight: locate TOC at tag
+        id: toc
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -d "AltClickStatus" ]]; then
-            echo "src=AltClickStatus" >> $GITHUB_OUTPUT
-          elif [[ -d "Interface/AddOns/AltClickStatus" ]]; then
-            echo "src=Interface/AddOns/AltClickStatus" >> $GITHUB_OUTPUT
-          else
-            echo "::error::Could not find AltClickStatus folder. Ensure the repo contains 'AltClickStatus/' or 'Interface/AddOns/AltClickStatus/'."
+          FOUND=""
+          if [[ -f "AltClickStatus/AltClickStatus.toc" ]]; then
+            FOUND="AltClickStatus/AltClickStatus.toc"
+          elif [[ -f "Interface/AddOns/AltClickStatus/AltClickStatus.toc" ]]; then
+            FOUND="Interface/AddOns/AltClickStatus/AltClickStatus.toc"
+          fi
+          echo "found=${FOUND}" >> "$GITHUB_OUTPUT"
+          if [[ -z "$FOUND" ]]; then
+            echo "::error::Could not find AltClickStatus.toc at tag '${{ steps.meta.outputs.tag }}'."
+            echo "Expected one of:"
+            echo "  - AltClickStatus/AltClickStatus.toc"
+            echo "  - Interface/AddOns/AltClickStatus/AltClickStatus.toc"
+            echo "Tip: ensure the tag includes .pkgmeta and the TOC file."
             exit 1
           fi
+          echo "Found TOC at $FOUND"
 
+      # ---------------- GitHub Release ZIP (underscore + folder inside) ----------------
       - name: Prepare ZIP package for GitHub Release
         shell: bash
         run: |
           set -euo pipefail
-          SRC="${{ steps.locate.outputs.src }}"
+          SRC_DIR="$(dirname "${{ steps.toc.outputs.found }}")"
           ADDON="AltClickStatus"
           mkdir -p pkg/"${ADDON}"
-          rsync -a --delete --exclude ".git" --exclude ".github" --exclude "pkg" "${SRC}/" "pkg/${ADDON}/"
+          rsync -a --delete --exclude ".git" --exclude ".github" --exclude "pkg" "${SRC_DIR}/" "pkg/${ADDON}/"
+
+          # For GitHub ZIP we keep explicit version in TOC (packaged copy only)
           if grep -qE '^##\s*Version:' "pkg/${ADDON}/${ADDON}.toc"; then
             sed -i -E "s/^(##\s*Version:)\s*.*/\1 ${{ steps.meta.outputs.version }}/" "pkg/${ADDON}/${ADDON}.toc"
           else
@@ -101,11 +116,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Confirm .pkgmeta present
+      # ---------------- CurseForge: BigWigs Packager ----------------
+      - name: Confirm .pkgmeta present at tag
         shell: bash
         run: |
           if [[ ! -f ".pkgmeta" ]]; then
-            echo "::error::.pkgmeta missing in repo root; it is required to fix folder structure."
+            echo "::error::.pkgmeta missing at tag '${{ steps.meta.outputs.tag }}'."
+            echo "You must commit .pkgmeta and create a NEW tag (e.g., v0.3.0f)."
             exit 1
           fi
 
@@ -114,4 +131,5 @@ jobs:
         env:
           CF_API_KEY: ${{ secrets.CF_API_KEY }}
         with:
+          # relies on .pkgmeta + @project-version@ in TOC committed at the tag
           args: -p 1333613

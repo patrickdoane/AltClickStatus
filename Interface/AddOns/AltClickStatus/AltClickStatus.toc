@@ -1,0 +1,7 @@
+## Interface: 11507
+## Title: Alt-Click Status
+## Notes: Alt-click announce for spells and unit frames (Classic Era + ElvUI). Alt+LeftClick does NOT cast.
+## Author: Patrick Doane
+## Version: 0.3.0
+## OptionalDeps: ElvUI
+AltClickStatus.lua

@@ -1,4 +1,5 @@
 name: release-on-tag
+
 on:
   push:
     tags:
@@ -6,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Existing tag to (re)package, e.g. v0.3.0f'
+        description: 'Existing tag to (re)package, e.g. v0.3.0i'
         required: true
-        default: 'v0.3.0f'
+        default: 'v0.3.0i'
 
 permissions:
   contents: write
@@ -16,6 +17,8 @@ permissions:
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}   # Expose the tag to the debug job
     steps:
       - name: 'Derive tag & version'
         id: meta
@@ -50,7 +53,7 @@ jobs:
             exit 1
           fi
 
-      - name: 'Preflight: show repo tree (first 200 files)'
+      - name: 'Preflight: show repo tree (first 200 paths)'
         run: |
           git ls-tree -r --name-only HEAD | sed -n '1,200p' || true
 
@@ -60,14 +63,17 @@ jobs:
         run: |
           set -euo pipefail
           if [[ -f "AltClickStatus/AltClickStatus.toc" ]]; then
+            echo "Found TOC at AltClickStatus/AltClickStatus.toc"
             echo "found=AltClickStatus/AltClickStatus.toc" >> "$GITHUB_OUTPUT"
           else
             echo "::error::Expected AltClickStatus/AltClickStatus.toc at the tag, but it was not found."
-            echo "Tip: commit the top-level layout and create a NEW tag."
+            echo "Tip: ensure the top-level addon folder exists at the tag and contains the TOC."
             exit 1
           fi
-          echo "Detected TOC at AltClickStatus/AltClickStatus.toc"
-     
+          if ! grep -q '@project-version@' "AltClickStatus/AltClickStatus.toc"; then
+            echo "::warning::TOC does not contain '@project-version@'. Packager will not bump Version from the tag."
+          fi
+
       - name: 'Prepare ZIP package for GitHub Release'
         shell: bash
         run: |
@@ -76,6 +82,7 @@ jobs:
           ADDON="AltClickStatus"
           mkdir -p "pkg/${ADDON}"
           rsync -a --delete --exclude ".git" --exclude ".github" --exclude "pkg" "${SRC_DIR}/" "pkg/${ADDON}/"
+          # bump Version inside the packaged copy for GitHub Release zip
           if grep -qE '^##\s*Version:' "pkg/${ADDON}/${ADDON}.toc"; then
             sed -i -E "s/^(##\s*Version:)\s*.*/\1 ${{ steps.meta.outputs.version }}/" "pkg/${ADDON}/${ADDON}.toc"
           else
@@ -104,61 +111,24 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 'Confirm .pkgmeta present at tag'
-        shell: bash
-        run: |
-          if [[ ! -f ".pkgmeta" ]]; then
-            echo "::error::.pkgmeta missing at tag '${{ steps.meta.outputs.tag }}'."
-            echo "You must commit .pkgmeta and create a NEW tag (e.g., v0.3.0f)."
-            exit 1
-          fi
-      - name: 'Derive addon name & source dir from TOC (at tag)'
-        id: addonn
+      # --- Packager bits ---
+
+      - name: 'Write clean .pkgmeta for packager'
         shell: bash
         run: |
           set -euo pipefail
-          # Prefer common WoW layouts first:
-          CANDIDATES=(
-            "AltClickStatus/AltClickStatus.toc"
-            "Interface/AddOns/AltClickStatus/AltClickStatus.toc"
-          )
-          # Fallback: any *.toc (shallow search) – first match wins
-          while IFS= read -r p; do CANDIDATES+=("$p"); done < <(git ls-files | grep -E '\.toc$' || true)
-
-          NAME=""
-          SRC=""
-          for p in "${CANDIDATES[@]}"; do
-            if [[ -f "$p" ]]; then
-              NAME="$(basename "$p" .toc)"
-              SRC="$(dirname "$p")"
-              echo "Using TOC: $p"
-              break
-            fi
-          done
-          if [[ -z "$NAME" || -z "$SRC" ]]; then
-            echo "::error::No .toc found at tag '${{ steps.meta.outputs.tag }}'."
-            exit 1
-          fi
-          echo "name=${NAME}" >> "$GITHUB_OUTPUT"
-          echo "src=${SRC}" >> "$GITHUB_OUTPUT"
-
-      - name: 'Generate .pkgmeta from detected TOC'
-        shell: bash
-        run: |
-          set -euo pipefail
-          cat > .pkgmeta <<EOF
-          package-as: ${{ steps.addonn.outputs.name }}
-
-          move-folders:
-            ${{ steps.addonn.outputs.src }}: ${{ steps.addonn.outputs.name }}
+          cat > .pkgmeta <<'EOF'
+          package-as: AltClickStatus
 
           ignore:
             - .git
             - .github
             - pkg
           EOF
-          echo "Generated .pkgmeta:"
-          cat .pkgmeta
+          # Normalize line endings (guard against CRLF)
+          perl -pi -e 's/\r\n/\n/g' .pkgmeta
+          echo ".pkgmeta (control chars visible):"
+          sed -n '1,50p' .pkgmeta | cat -v
 
       - name: 'Upload to CurseForge (BigWigs Packager)'
         uses: BigWigsMods/packager@v2
@@ -166,3 +136,55 @@ jobs:
           CF_API_KEY: ${{ secrets.CF_API_KEY }}
         with:
           args: -p 1333613
+
+  debug-packager:
+    needs: build-and-release
+    if: ${{ failure() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Checkout tag'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.build-and-release.outputs.tag }}
+
+      - name: 'Show repo tree at the tag (first 200 paths)'
+        run: |
+          git ls-tree -r --name-only HEAD | sed -n '1,200p' || true
+
+      - name: 'Reveal control chars in path names (sanity)'
+        run: |
+          python3 - << 'PY'
+          import os
+          for root, dirs, files in os.walk('.', topdown=True):
+              for d in dirs:
+                  print('DIR ', repr(os.path.join(root, d)))
+              for f in files:
+                  print('FILE', repr(os.path.join(root, f)))
+          PY
+
+      - name: 'Recreate packager staging and inspect'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf .release
+          mkdir -p .release/AltClickStatus
+          rsync -a --exclude ".git" --exclude ".github" --exclude "pkg" AltClickStatus/ .release/AltClickStatus/
+
+          echo "Top-level of .release (with control chars):"
+          (cd .release && ls -la | cat -v)
+
+          echo "Inside .release/AltClickStatus (with control chars):"
+          (cd .release/AltClickStatus && ls -la | cat -v)
+
+          echo "TOC head (with control chars):"
+          sed -n '1,30p' AltClickStatus/AltClickStatus.toc | cat -v
+
+      - name: 'Zip like packager does (diagnostic)'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          (cd .release && zip -X -r test.zip . -i AltClickStatus || true)
+          echo "Zip exit code above should be 0 if folder name matched."
+          ls -la .release || true
+          ls -la .release/AltClickStatus || true

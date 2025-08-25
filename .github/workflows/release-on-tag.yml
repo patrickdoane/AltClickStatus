@@ -1,27 +1,59 @@
 name: release-on-tag
+
 on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)package, e.g. v0.3.0b"
+        required: true
+        default: "v0.3.0b"
+
 permissions:
   contents: write
+
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Derive tag & version
+        id: meta
+        shell: bash
+        run: |
+          # If launched manually, use the provided input tag; else use the ref name from the tag push
+          if [[ -n "${{ github.event.inputs.tag }}" ]]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          if [[ -z "$TAG" ]]; then
+            echo "::error::No tag provided or detected."
+            exit 1
+          fi
+          VERSION="${TAG#v}"
+
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+          echo "TAG=${TAG}" >> "$GITHUB_ENV"
+          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+
+      - name: Checkout tag
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Derive version from tag
-        id: meta
+          ref: ${{ steps.meta.outputs.tag }}
+
+      - name: Verify tag exists
+        shell: bash
         run: |
-          TAG="${GITHUB_REF_NAME}"
-          VERSION="${TAG#v}"
-          echo "TAG=${TAG}" >> $GITHUB_ENV
-          echo "VERSION=${VERSION}" >> $GITHUB_ENV
-          echo "tag=${TAG}" >> $GITHUB_OUTPUT
-          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          if ! git show-ref --tags --verify --quiet "refs/tags/${{ steps.meta.outputs.tag }}"; then
+            echo "::error::Tag '${{ steps.meta.outputs.tag }}' does not exist."
+            exit 1
+          fi
+
       - name: Locate addon source
         id: locate
         shell: bash
@@ -35,7 +67,8 @@ jobs:
             echo "::error::Could not find AltClickStatus folder. Ensure the repo contains 'AltClickStatus/' or 'Interface/AddOns/AltClickStatus/'."
             exit 1
           fi
-      - name: Prepare package
+
+      - name: Prepare ZIP package
         shell: bash
         run: |
           set -euo pipefail
@@ -43,28 +76,33 @@ jobs:
           ADDON="AltClickStatus"
           mkdir -p pkg/"${ADDON}"
           rsync -a --delete --exclude ".git" --exclude ".github" --exclude "pkg" "${SRC}/" "pkg/${ADDON}/"
+
+          # Bump/add Version in TOC inside the package ONLY
           if grep -qE '^##\s*Version:' "pkg/${ADDON}/${ADDON}.toc"; then
-            sed -i -E "s/^(##\s*Version:)\s*.*/\1 ${{ env.VERSION }}/" "pkg/${ADDON}/${ADDON}.toc"
+            sed -i -E "s/^(##\s*Version:)\s*.*/\1 ${{ steps.meta.outputs.version }}/" "pkg/${ADDON}/${ADDON}.toc"
           else
-            echo "## Version: ${{ env.VERSION }}" >> "pkg/${ADDON}/${ADDON}.toc"
+            echo "## Version: ${{ steps.meta.outputs.version }}" >> "pkg/${ADDON}/${ADDON}.toc"
           fi
+
           cd pkg
-          ZIP="${ADDON}_${{ env.TAG }}.zip"
+          ZIP="${ADDON}_${{ steps.meta.outputs.tag }}.zip"
           zip -r "$ZIP" "${ADDON}"
           echo "ZIP_PATH=${PWD}/${ZIP}" >> $GITHUB_ENV
-      - name: Upload artifact
+
+      - name: Upload artifact (for manual download)
         uses: actions/upload-artifact@v4
         with:
-          name: AltClickStatus_${{ env.TAG }}.zip
+          name: AltClickStatus_${{ steps.meta.outputs.tag }}.zip
           path: ${{ env.ZIP_PATH }}
-      - name: Create GitHub Release
+
+      - name: Create or update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ env.ZIP_PATH }}
-          name: Alt-Click Status ${{ env.TAG }}
-          tag_name: ${{ env.TAG }}
-          body: |
-            Alt-Click Status ${{ env.TAG }}
-            Automatically packaged on tag.
+          name: Alt-Click Status ${{ steps.meta.outputs.tag }}
+          tag_name: ${{ steps.meta.outputs.tag }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -33,10 +33,8 @@ jobs:
             exit 1
           fi
           VERSION="${TAG#v}"
-
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-
           echo "TAG=${TAG}" >> "$GITHUB_ENV"
           echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
 
@@ -68,7 +66,7 @@ jobs:
             exit 1
           fi
 
-      - name: Prepare ZIP package
+      - name: Prepare ZIP package for GitHub Release
         shell: bash
         run: |
           set -euo pipefail
@@ -76,20 +74,17 @@ jobs:
           ADDON="AltClickStatus"
           mkdir -p pkg/"${ADDON}"
           rsync -a --delete --exclude ".git" --exclude ".github" --exclude "pkg" "${SRC}/" "pkg/${ADDON}/"
-
-          # Bump/add Version in TOC inside the package ONLY
           if grep -qE '^##\s*Version:' "pkg/${ADDON}/${ADDON}.toc"; then
             sed -i -E "s/^(##\s*Version:)\s*.*/\1 ${{ steps.meta.outputs.version }}/" "pkg/${ADDON}/${ADDON}.toc"
           else
             echo "## Version: ${{ steps.meta.outputs.version }}" >> "pkg/${ADDON}/${ADDON}.toc"
           fi
-
           cd pkg
           ZIP="${ADDON}_${{ steps.meta.outputs.tag }}.zip"
           zip -r "$ZIP" "${ADDON}"
           echo "ZIP_PATH=${PWD}/${ZIP}" >> $GITHUB_ENV
 
-      - name: Upload artifact (for manual download)
+      - name: Upload artifact (GitHub zip)
         uses: actions/upload-artifact@v4
         with:
           name: AltClickStatus_${{ steps.meta.outputs.tag }}.zip
@@ -106,3 +101,31 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Ensure TOC has Version + X-Curse-Project-ID for packager
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC="${{ steps.locate.outputs.src }}"
+          TOC="${SRC}/AltClickStatus.toc"
+          if [[ ! -f "$TOC" ]]; then
+            echo "::error::TOC not found at $TOC"
+            exit 1
+          fi
+          if grep -qE '^##\s*Version:' "$TOC"; then
+            sed -i -E "s/^(##\s*Version:)\s*.*/\1 ${{ steps.meta.outputs.version }}/" "$TOC"
+          else
+            echo "## Version: ${{ steps.meta.outputs.version }}" >> "$TOC"
+          fi
+          if grep -qE '^##\s*X-Curse-Project-ID:' "$TOC"; then
+            sed -i -E "s/^(##\s*X-Curse-Project-ID:)\s*.*/\1 1333613/" "$TOC"
+          else
+            echo "## X-Curse-Project-ID: 1333613" >> "$TOC"
+          fi
+
+      - name: Upload to CurseForge (BigWigs Packager)
+        uses: BigWigsMods/packager@v2
+        env:
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}
+        with:
+          args: -p 1333613

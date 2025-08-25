@@ -1,0 +1,4 @@
+# .gitattributes
+*.lua text eol=lf
+*.toc text eol=lf
+.pkgmeta text eol=lf

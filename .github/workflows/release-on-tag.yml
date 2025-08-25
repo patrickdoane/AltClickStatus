@@ -130,6 +130,41 @@ jobs:
           echo ".pkgmeta (control chars visible):"
           sed -n '1,50p' .pkgmeta | cat -v
 
+      - name: 'Debug: show what will be packaged'
+        shell: bash
+        run: |
+          echo "Repo root contents:"
+          ls -la
+          echo "AltClickStatus folder:"
+          ls -la AltClickStatus || true
+          echo "TOC head:"
+          sed -n '1,20p' AltClickStatus/AltClickStatus.toc
+
+      - name: 'Write clean .pkgmeta for packager'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > .pkgmeta <<'EOF'
+          package-as: AltClickStatus
+
+          ignore:
+            - .git
+            - .github
+            - pkg
+          EOF
+          # Normalize line endings to LF and show control chars (should be clean)
+          perl -pi -e 's/\r\n/\n/g' .pkgmeta
+          echo ".pkgmeta content (visible control chars):"
+          sed -n '1,50p' .pkgmeta | cat -v 
+
+      - name: 'Sanity: ensure addon folder exists'
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f AltClickStatus/AltClickStatus.toc || (echo "TOC missing"; exit 1)
+          # Ensure the folder exists and is non-empty
+          find AltClickStatus -maxdepth 1 -type f | sed -n '1,20p'
+
       - name: 'Upload to CurseForge (BigWigs Packager)'
         uses: BigWigsMods/packager@v2
         env:

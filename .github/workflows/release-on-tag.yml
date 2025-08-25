@@ -18,7 +18,7 @@ jobs:
   build-and-release:
     runs-on: ubuntu-latest
     outputs:
-      tag: ${{ steps.meta.outputs.tag }}   # Expose the tag to the debug job
+      tag: ${{ steps.meta.outputs.tag }}
     steps:
       - name: 'Derive tag & version'
         id: meta
@@ -74,6 +74,7 @@ jobs:
             echo "::warning::TOC does not contain '@project-version@'. Packager will not bump Version from the tag."
           fi
 
+      # ---------- GitHub ZIP ----------
       - name: 'Prepare ZIP package for GitHub Release'
         shell: bash
         run: |
@@ -111,8 +112,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # --- Packager bits ---
-
+      # ---------- CurseForge primary: BigWigs Packager ----------
       - name: 'Write clean .pkgmeta for packager'
         shell: bash
         run: |
@@ -125,52 +125,32 @@ jobs:
             - .github
             - pkg
           EOF
-          # Normalize line endings (guard against CRLF)
           perl -pi -e 's/\r\n/\n/g' .pkgmeta
           echo ".pkgmeta (control chars visible):"
           sed -n '1,50p' .pkgmeta | cat -v
 
-      - name: 'Debug: show what will be packaged'
-        shell: bash
-        run: |
-          echo "Repo root contents:"
-          ls -la
-          echo "AltClickStatus folder:"
-          ls -la AltClickStatus || true
-          echo "TOC head:"
-          sed -n '1,20p' AltClickStatus/AltClickStatus.toc
-
-      - name: 'Write clean .pkgmeta for packager'
-        shell: bash
-        run: |
-          set -euo pipefail
-          cat > .pkgmeta <<'EOF'
-          package-as: AltClickStatus
-
-          ignore:
-            - .git
-            - .github
-            - pkg
-          EOF
-          # Normalize line endings to LF and show control chars (should be clean)
-          perl -pi -e 's/\r\n/\n/g' .pkgmeta
-          echo ".pkgmeta content (visible control chars):"
-          sed -n '1,50p' .pkgmeta | cat -v 
-
-      - name: 'Sanity: ensure addon folder exists'
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -f AltClickStatus/AltClickStatus.toc || (echo "TOC missing"; exit 1)
-          # Ensure the folder exists and is non-empty
-          find AltClickStatus -maxdepth 1 -type f | sed -n '1,20p'
-
       - name: 'Upload to CurseForge (BigWigs Packager)'
+        id: bw
+        continue-on-error: true
         uses: BigWigsMods/packager@v2
         env:
           CF_API_KEY: ${{ secrets.CF_API_KEY }}
         with:
           args: -p 1333613
+
+      # ---------- CurseForge fallback: direct uploader ----------
+      - name: 'Fallback upload to CurseForge (if packager failed)'
+        if: ${{ steps.bw.outcome == 'failure' }}
+        uses: itsmeow/curseforge-upload@v3
+        with:
+          token: ${{ secrets.CF_API_KEY }}
+          project_id: '1333613'
+          game_endpoint: 'wow'
+          file_path: ${{ env.ZIP_PATH }}
+          release_type: 'release'
+          # The action can resolve names; adjust if CurseForge uses different wording for Era.
+          game_versions: 'Classic Era:1.15.7'
+          display_name: 'Alt-Click Status ${{ steps.meta.outputs.tag }}'
 
   debug-packager:
     needs: build-and-release
@@ -205,13 +185,10 @@ jobs:
           rm -rf .release
           mkdir -p .release/AltClickStatus
           rsync -a --exclude ".git" --exclude ".github" --exclude "pkg" AltClickStatus/ .release/AltClickStatus/
-
           echo "Top-level of .release (with control chars):"
           (cd .release && ls -la | cat -v)
-
           echo "Inside .release/AltClickStatus (with control chars):"
           (cd .release/AltClickStatus && ls -la | cat -v)
-
           echo "TOC head (with control chars):"
           sed -n '1,30p' AltClickStatus/AltClickStatus.toc | cat -v
 

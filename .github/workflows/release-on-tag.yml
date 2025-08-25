@@ -7,9 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing tag to (re)package, e.g. v0.3.0b"
+        description: "Existing tag to (re)package, e.g. v0.3.0e"
         required: true
-        default: "v0.3.0b"
+        default: "v0.3.0e"
 
 permissions:
   contents: write
@@ -22,7 +22,6 @@ jobs:
         id: meta
         shell: bash
         run: |
-          # If launched manually, use the provided input tag; else use the ref name from the tag push
           if [[ -n "${{ github.event.inputs.tag }}" ]]; then
             TAG="${{ github.event.inputs.tag }}"
           else
@@ -102,25 +101,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Ensure TOC has Version + X-Curse-Project-ID for packager
+      - name: Confirm .pkgmeta present
         shell: bash
         run: |
-          set -euo pipefail
-          SRC="${{ steps.locate.outputs.src }}"
-          TOC="${SRC}/AltClickStatus.toc"
-          if [[ ! -f "$TOC" ]]; then
-            echo "::error::TOC not found at $TOC"
+          if [[ ! -f ".pkgmeta" ]]; then
+            echo "::error::.pkgmeta missing in repo root; it is required to fix folder structure."
             exit 1
-          fi
-          if grep -qE '^##\s*Version:' "$TOC"; then
-            sed -i -E "s/^(##\s*Version:)\s*.*/\1 ${{ steps.meta.outputs.version }}/" "$TOC"
-          else
-            echo "## Version: ${{ steps.meta.outputs.version }}" >> "$TOC"
-          fi
-          if grep -qE '^##\s*X-Curse-Project-ID:' "$TOC"; then
-            sed -i -E "s/^(##\s*X-Curse-Project-ID:)\s*.*/\1 1333613/" "$TOC"
-          else
-            echo "## X-Curse-Project-ID: 1333613" >> "$TOC"
           fi
 
       - name: Upload to CurseForge (BigWigs Packager)

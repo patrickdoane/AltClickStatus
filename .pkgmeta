@@ -1,20 +1,12 @@
-# Package metadata for BigWigs/CurseForge/Wago packager
-# Docs: https://github.com/BigWigsMods/packager
-
 package-as: AltClickStatus
 
-# Exclude files/folders from release zips
+move-folders:
+  Interface/AddOns/AltClickStatus: AltClickStatus
+
 ignore:
   - .git
   - .github
-  - .gitignore
-  - README.md
-  - RELEASE_CHECKLIST.md
-  - .pkgmeta
-  - tools/
-
-# Optional: use README.md as the changelog body for releases
-disable-externals: yes
-manual-changelog: true
-changelog: README.md
-changelog-format: markdown
+  - pkg
+  - README_BADGE_SNIPPET.md
+  - PR_BODY.md
+  - COMMIT_MSG.txt

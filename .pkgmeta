@@ -1,6 +1,8 @@
 package-as: AltClickStatus
 
+# Support both common repo layouts. Only existing paths are moved.
 move-folders:
+  AltClickStatus: AltClickStatus
   Interface/AddOns/AltClickStatus: AltClickStatus
 
 ignore:

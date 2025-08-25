@@ -1,15 +1,14 @@
 name: release-on-tag
-
 on:
   push:
     tags:
-      - "v*"
+      - 'v*'
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing tag to (re)package, e.g. v0.3.0e"
+        description: 'Existing tag to (re)package, e.g. v0.3.0f'
         required: true
-        default: "v0.3.0e"
+        default: 'v0.3.0f'
 
 permissions:
   contents: write
@@ -18,7 +17,7 @@ jobs:
   build-and-release:
     runs-on: ubuntu-latest
     steps:
-      - name: Derive tag & version
+      - name: 'Derive tag & version'
         id: meta
         shell: bash
         run: |
@@ -37,13 +36,13 @@ jobs:
           echo "TAG=${TAG}" >> "$GITHUB_ENV"
           echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
 
-      - name: Checkout tag
+      - name: 'Checkout tag'
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: ${{ steps.meta.outputs.tag }}
 
-      - name: Verify tag exists
+      - name: 'Verify tag exists'
         shell: bash
         run: |
           if ! git show-ref --tags --verify --quiet "refs/tags/${{ steps.meta.outputs.tag }}"; then
@@ -51,28 +50,43 @@ jobs:
             exit 1
           fi
 
-      - name: Locate addon source
-        id: locate
+      - name: 'Preflight: show repo tree (first 200 files)'
+        run: |
+          git ls-tree -r --name-only HEAD | sed -n '1,200p' || true
+
+      - name: 'Preflight: locate TOC at tag'
+        id: toc
         shell: bash
         run: |
           set -euo pipefail
-          if [[ -d "AltClickStatus" ]]; then
-            echo "src=AltClickStatus" >> $GITHUB_OUTPUT
-          elif [[ -d "Interface/AddOns/AltClickStatus" ]]; then
-            echo "src=Interface/AddOns/AltClickStatus" >> $GITHUB_OUTPUT
-          else
-            echo "::error::Could not find AltClickStatus folder. Ensure the repo contains 'AltClickStatus/' or 'Interface/AddOns/AltClickStatus/'."
+          FOUND=""
+          if [[ -f "AltClickStatus/AltClickStatus.toc" ]]; then
+            FOUND="AltClickStatus/AltClickStatus.toc"
+          elif [[ -f "Interface/AddOns/AltClickStatus/AltClickStatus.toc" ]]; then
+            FOUND="Interface/AddOns/AltClickStatus/AltClickStatus.toc"
+          fi
+          echo "found=${FOUND}" >> "$GITHUB_OUTPUT"
+          if [[ -z "$FOUND" ]]; then
+            echo "::error::Could not find AltClickStatus.toc at tag '${{ steps.meta.outputs.tag }}'."
+            echo "Expected one of:"
+            echo "  - AltClickStatus/AltClickStatus.toc"
+            echo "  - Interface/AddOns/AltClickStatus/AltClickStatus.toc"
+            echo "Tip: ensure the tag includes .pkgmeta and the TOC file."
             exit 1
           fi
+          echo "Found TOC at $FOUND"
+          if ! grep -q '@project-version@' "$FOUND"; then
+            echo "::warning::TOC does not contain '@project-version@'. Packager will not bump Version from the tag."
+          fi
 
-      - name: Prepare ZIP package for GitHub Release
+      - name: 'Prepare ZIP package for GitHub Release'
         shell: bash
         run: |
           set -euo pipefail
-          SRC="${{ steps.locate.outputs.src }}"
+          SRC_DIR="$(dirname "${{ steps.toc.outputs.found }}")"
           ADDON="AltClickStatus"
-          mkdir -p pkg/"${ADDON}"
-          rsync -a --delete --exclude ".git" --exclude ".github" --exclude "pkg" "${SRC}/" "pkg/${ADDON}/"
+          mkdir -p "pkg/${ADDON}"
+          rsync -a --delete --exclude ".git" --exclude ".github" --exclude "pkg" "${SRC_DIR}/" "pkg/${ADDON}/"
           if grep -qE '^##\s*Version:' "pkg/${ADDON}/${ADDON}.toc"; then
             sed -i -E "s/^(##\s*Version:)\s*.*/\1 ${{ steps.meta.outputs.version }}/" "pkg/${ADDON}/${ADDON}.toc"
           else
@@ -83,13 +97,13 @@ jobs:
           zip -r "$ZIP" "${ADDON}"
           echo "ZIP_PATH=${PWD}/${ZIP}" >> $GITHUB_ENV
 
-      - name: Upload artifact (GitHub zip)
+      - name: 'Upload artifact (GitHub zip)'
         uses: actions/upload-artifact@v4
         with:
           name: AltClickStatus_${{ steps.meta.outputs.tag }}.zip
           path: ${{ env.ZIP_PATH }}
 
-      - name: Create or update GitHub Release
+      - name: 'Create or update GitHub Release'
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ env.ZIP_PATH }}
@@ -101,15 +115,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Confirm .pkgmeta present
+      - name: 'Confirm .pkgmeta present at tag'
         shell: bash
         run: |
           if [[ ! -f ".pkgmeta" ]]; then
-            echo "::error::.pkgmeta missing in repo root; it is required to fix folder structure."
+            echo "::error::.pkgmeta missing at tag '${{ steps.meta.outputs.tag }}'."
+            echo "You must commit .pkgmeta and create a NEW tag (e.g., v0.3.0f)."
             exit 1
           fi
 
-      - name: Upload to CurseForge (BigWigs Packager)
+      - name: 'Upload to CurseForge (BigWigs Packager)'
         uses: BigWigsMods/packager@v2
         env:
           CF_API_KEY: ${{ secrets.CF_API_KEY }}

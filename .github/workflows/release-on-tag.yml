@@ -59,31 +59,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          FOUND=""
           if [[ -f "AltClickStatus/AltClickStatus.toc" ]]; then
-            FOUND="AltClickStatus/AltClickStatus.toc"
-          elif [[ -f "Interface/AddOns/AltClickStatus/AltClickStatus.toc" ]]; then
-            FOUND="Interface/AddOns/AltClickStatus/AltClickStatus.toc"
-          fi
-          echo "found=${FOUND}" >> "$GITHUB_OUTPUT"
-          if [[ -z "$FOUND" ]]; then
-            echo "::error::Could not find AltClickStatus.toc at tag '${{ steps.meta.outputs.tag }}'."
-            echo "Expected one of:"
-            echo "  - AltClickStatus/AltClickStatus.toc"
-            echo "  - Interface/AddOns/AltClickStatus/AltClickStatus.toc"
-            echo "Tip: ensure the tag includes .pkgmeta and the TOC file."
+            echo "found=AltClickStatus/AltClickStatus.toc" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Expected AltClickStatus/AltClickStatus.toc at the tag, but it was not found."
+            echo "Tip: commit the top-level layout and create a NEW tag."
             exit 1
           fi
-          echo "Found TOC at $FOUND"
-          if ! grep -q '@project-version@' "$FOUND"; then
-            echo "::warning::TOC does not contain '@project-version@'. Packager will not bump Version from the tag."
-          fi
-
+          echo "Detected TOC at AltClickStatus/AltClickStatus.toc"
+     
       - name: 'Prepare ZIP package for GitHub Release'
         shell: bash
         run: |
           set -euo pipefail
-          SRC_DIR="$(dirname "${{ steps.toc.outputs.found }}")"
+          SRC_DIR="AltClickStatus"
           ADDON="AltClickStatus"
           mkdir -p "pkg/${ADDON}"
           rsync -a --delete --exclude ".git" --exclude ".github" --exclude "pkg" "${SRC_DIR}/" "pkg/${ADDON}/"

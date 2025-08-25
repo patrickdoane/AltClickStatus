@@ -1,4 +1,7 @@
 # Alt‑Click Status (Classic Era + ElvUI)
+<!-- Version & CI badges -->
+[![Latest Release](https://img.shields.io/github/v/release/patrickdoane/AltClickStatus?display_name=tag&sort=semver)](https://github.com/patrickdoane/AltClickStatus/releases/latest)
+[![Release on tag](https://img.shields.io/badge/CI-Release%20on%20tag-blue)](.github/workflows/release-on-tag.yml)
 
 Alt‑Click Status is a World of Warcraft **Classic Era** addon that lets you quickly communicate the status of your **spells** and **character** via **Alt + Left‑click**—inspired by Dota 2’s ping/announce system.
 

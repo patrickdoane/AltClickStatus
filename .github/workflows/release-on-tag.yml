@@ -1,0 +1,70 @@
+name: release-on-tag
+on:
+  push:
+    tags:
+      - "v*"
+permissions:
+  contents: write
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Derive version from tag
+        id: meta
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          echo "TAG=${TAG}" >> $GITHUB_ENV
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+      - name: Locate addon source
+        id: locate
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -d "AltClickStatus" ]]; then
+            echo "src=AltClickStatus" >> $GITHUB_OUTPUT
+          elif [[ -d "Interface/AddOns/AltClickStatus" ]]; then
+            echo "src=Interface/AddOns/AltClickStatus" >> $GITHUB_OUTPUT
+          else
+            echo "::error::Could not find AltClickStatus folder. Ensure the repo contains 'AltClickStatus/' or 'Interface/AddOns/AltClickStatus/'."
+            exit 1
+          fi
+      - name: Prepare package
+        shell: bash
+        run: |
+          set -euo pipefail
+          SRC="${{ steps.locate.outputs.src }}"
+          ADDON="AltClickStatus"
+          mkdir -p pkg/"${ADDON}"
+          rsync -a --delete --exclude ".git" --exclude ".github" --exclude "pkg" "${SRC}/" "pkg/${ADDON}/"
+          if grep -qE '^##\s*Version:' "pkg/${ADDON}/${ADDON}.toc"; then
+            sed -i -E "s/^(##\s*Version:)\s*.*/\1 ${{ env.VERSION }}/" "pkg/${ADDON}/${ADDON}.toc"
+          else
+            echo "## Version: ${{ env.VERSION }}" >> "pkg/${ADDON}/${ADDON}.toc"
+          fi
+          cd pkg
+          ZIP="${ADDON}_${{ env.TAG }}.zip"
+          zip -r "$ZIP" "${ADDON}"
+          echo "ZIP_PATH=${PWD}/${ZIP}" >> $GITHUB_ENV
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AltClickStatus_${{ env.TAG }}.zip
+          path: ${{ env.ZIP_PATH }}
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ZIP_PATH }}
+          name: Alt-Click Status ${{ env.TAG }}
+          tag_name: ${{ env.TAG }}
+          body: |
+            Alt-Click Status ${{ env.TAG }}
+            Automatically packaged on tag.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

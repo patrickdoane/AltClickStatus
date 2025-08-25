@@ -18,7 +18,7 @@ jobs:
   build-and-release:
     runs-on: ubuntu-latest
     outputs:
-      tag: ${{ steps.meta.outputs.tag }}
+      tag: ${{ steps.meta.outputs.tag }}   # Expose the tag to the debug job
     steps:
       - name: 'Derive tag & version'
         id: meta
@@ -112,6 +112,40 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # ---------- Resolve game version (from TOC ## Interface:) ----------
+      - name: 'Resolve game version from TOC'
+        id: inf
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOC="AltClickStatus/AltClickStatus.toc"
+          IFACE_LINE="$(grep -E '^[[:space:]]*##[[:space:]]*Interface:[[:space:]]*[0-9]+' "$TOC" || true)"
+          IFACE="$(echo "$IFACE_LINE" | awk '{print $NF}')"
+          if [[ -z "${IFACE:-}" ]]; then
+            echo "::warning::No Interface line found; defaulting to 1.15.7"
+            GV="1.15.7"
+          else
+            digits="$IFACE"
+            len=${#digits}
+            if [[ $len -ge 5 ]]; then
+              if [[ $len -eq 5 ]]; then
+                maj="${digits:0:1}"
+                min=$((10#${digits:1:2}))
+                pat=$((10#${digits:3:2}))
+              else
+                # heuristic for 6+ digits (retail-style): MMmmpp -> MM.mmp.p  (works for 10.x.y, 11.x.y)
+                maj=$((10#${digits:0:2}))
+                min=$((10#${digits:2:2}))
+                pat=$((10#${digits:4:2}))
+              fi
+              GV="${maj}.${min}.${pat}"
+            else
+              GV="1.15.7"
+            fi
+          fi
+          echo "Resolved game version: $GV"
+          echo "gamever=${GV}" >> "$GITHUB_OUTPUT"
+
       # ---------- CurseForge primary: BigWigs Packager ----------
       - name: 'Write clean .pkgmeta for packager'
         shell: bash
@@ -148,8 +182,7 @@ jobs:
           game_endpoint: 'wow'
           file_path: ${{ env.ZIP_PATH }}
           release_type: 'release'
-          # The action can resolve names; adjust if CurseForge uses different wording for Era.
-          game_versions: 'Classic Era:1.15.7'
+          game_versions: '${{ steps.inf.outputs.gamever }}'   # auto-resolved: e.g. 1.15.7
           display_name: 'Alt-Click Status ${{ steps.meta.outputs.tag }}'
 
   debug-packager:

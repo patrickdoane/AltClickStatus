@@ -1,7 +1,6 @@
-
--- Alt-Click Status v0.3.0b (Classic Era + ElvUI)
+-- Alt-Click Status v0.3.0j (Classic Era + ElvUI)
 -- Hotfix: robust macro parser for /cast lines with chained conditionals, e.g. `/cast [@cursor][] Blizzard`.
--- Note: This is a minimal fix on top of v0.3.0. No rank-resolution changes from 0.3.1 are included.
+-- Issue #12 fix: Only announce on real Alt+Left mouse clicks (ignore Alt+keybinds like Alt+1).
 
 local A = CreateFrame("Frame", "AltClickStatusFrame")
 A.CHANNEL_MODE = "AUTO"; A.THROTTLE_SEC = 0.75
@@ -25,6 +24,46 @@ local function safeSend(msg)
     if (now-lastSentAt)<A.THROTTLE_SEC then return end
     lastSentAt=now
     SendChatMessage(msg, chooseChannel())
+end
+
+-- -------------------------------
+-- Mouse-origin gate (issue #12)
+-- -------------------------------
+-- True only if this frame saw a recent Alt+Left mouse down (keyboard hotkeys won't set this).
+local function ACS_WasAltMouseClick(frame)
+    if not frame or type(frame) ~= "table" then return false end
+    local t = frame.__ACS_altMouseClickTime
+    return t and (GetTime() - t) < 0.75 or false
+end
+
+local function ACS_MarkAltMouseDown(self, button)
+    if button ~= "LeftButton" or not IsAltKeyDown() then return end
+    -- Only consider action-type buttons (secure or classic)
+    if self and type(self) == "table" then
+        local isAction = (type(self.GetAttribute)=="function" and (self:GetAttribute("type")=="action" or self:GetAttribute("action"))) or self.action
+        if isAction then
+            self.__ACS_altMouseClickTime = GetTime()
+            self.__ACS_altMouseClick = true
+        end
+    end
+end
+
+local function ACS_ClearMouseMark(self)
+    if self then
+        self.__ACS_altMouseClick = nil
+        self.__ACS_altMouseClickTime = nil
+    end
+end
+
+-- Safety net: if user Alt+Left clicks directly, capture the focused frame
+if WorldFrame and WorldFrame.HookScript then
+    WorldFrame:HookScript("OnMouseDown", function(_, button)
+        if button ~= "LeftButton" or not IsAltKeyDown() then return end
+        local f = GetMouseFocus()
+        if f and type(f)=="table" then
+            ACS_MarkAltMouseDown(f, "LeftButton")
+        end
+    end)
 end
 
 -- -------------------------------
@@ -132,6 +171,9 @@ end
 -- -------------------------------
 function AltClickStatus_AltClick(btn)
     if not btn or not IsAltKeyDown() then return end
+    -- Mouse-only guard: ignore Alt+keybind activations (issue #12)
+    if not ACS_WasAltMouseClick(btn) then return end
+
     local tok = getSpellFromActionButton(btn)
     if tok then
         safeSend(formatSpellStatus(tok))
@@ -140,7 +182,7 @@ function AltClickStatus_AltClick(btn)
     end
 end
 
--- Avoid double-announce: our macro consumed Alt+LeftClick already
+-- Avoid double-announce: placeholder (kept for future use)
 local function onAnyActionClick(self, button)
     if not A.ENABLE_ACTIONBAR then return end
     if button ~= "LeftButton" then return end
@@ -161,6 +203,13 @@ local function setupAltOverride(btn, name)
     return true
 end
 
+local function hookMouseOrigin(btn)
+    if not btn or not btn.HookScript or btn.__ACS_MouseHooked or InCombatLockdown() then return end
+    btn:HookScript("OnMouseDown", ACS_MarkAltMouseDown)
+    btn:HookScript("PostClick", ACS_ClearMouseMark)
+    btn.__ACS_MouseHooked = true
+end
+
 local BLIZZ_PREFIX = {"ActionButton","MultiBarBottomLeftButton","MultiBarBottomRightButton","MultiBarRightButton","MultiBarLeftButton"}
 local function configureBlizzardButtons()
     local conf,hook = 0,0
@@ -171,8 +220,11 @@ local function configureBlizzardButtons()
             if b then
                 if setupAltOverride(b,name) then conf=conf+1 end
                 if b.HookScript and not b.__ACS_Hooked and not InCombatLockdown() then
-                    b:HookScript("OnClick", onAnyActionClick); b.__ACS_Hooked=true; hook=hook+1
+                    b:HookScript("OnClick", onAnyActionClick)
+                    b.__ACS_Hooked=true
+                    hook=hook+1
                 end
+                hookMouseOrigin(b)
             end
         end
     end
@@ -180,7 +232,7 @@ local function configureBlizzardButtons()
 end
 
 local function configureElvUIButtons()
-    if not IsAddOnLoaded("ElvUI") then return end
+    if not IsAddOnLoaded("ElvUI") or not A.ENABLE_ELVUI_HOOKS then return end
     local conf,hook = 0,0
     for bar=1,10 do
         for i=1,24 do
@@ -189,13 +241,16 @@ local function configureElvUIButtons()
             if b then
                 if setupAltOverride(b,name) then conf=conf+1 end
                 if b.HookScript and not b.__ACS_Hooked and not InCombatLockdown() then
-                    b:HookScript("OnClick", onAnyActionClick); b.__ACS_Hooked=true; hook=hook+1
+                    b:HookScript("OnClick", onAnyActionClick)
+                    b.__ACS_Hooked=true
+                    hook=hook+1
                 end
+                hookMouseOrigin(b)
             end
         end
     end
     dprint("Configured ElvUI alt overrides:",conf,"Hooked:",hook)
-    -- Unit frames
+    -- Unit frames (unchanged)
     local efp=_G["ElvUF_Player"]
     if efp and not efp.__ACS_Hooked and efp.HookScript and not InCombatLockdown() then
         efp:HookScript("OnMouseUp", function(self,button)

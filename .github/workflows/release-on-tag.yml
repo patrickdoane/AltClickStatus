@@ -100,32 +100,47 @@ jobs:
           name: AltClickStatus_${{ steps.meta.outputs.tag }}.zip
           path: ${{ env.ZIP_PATH }}
 
-      # ---------- Use changelog section for current tag----------
-      - name: Extract changelog section for this tag
+      # ---------- Use changelog section for GitHub Release ----------
+      - name: 'Extract changelog section for this tag'
         id: relnotes
         shell: bash
         run: |
-          TAG="${{ steps.meta.outputs.tag }}"           # e.g., v0.3.0j
+          set -euo pipefail
+          TAG="${{ steps.meta.outputs.tag }}"   # e.g., v0.3.0j
           T="${TAG#v}"
-          awk -v ver="\\[v"T"\\]" '
+          awk -v ver="\[v"T"\]" '
             BEGIN{found=0}
-            /^##[ \t]*\[v[0-9]+\.[0-9]+\.[0-9]+\]/{
-              if(found) exit; if($0 ~ ver){found=1}
-            }
+            /^##[ \t]*\[v[0-9]+\.[0-9]+\.[0-9]+\]/{ if(found) exit; if($0 ~ ver){found=1} }
             found{print}
           ' CHANGELOG.md > RELEASE_NOTES.md
-          if ! grep -q . RELEASE_NOTES.md; then
+          # Trim leading/trailing blank lines
+          awk 'NF{p=1} p{print}' RELEASE_NOTES.md | awk '{print} END{print ""}' > RELEASE_NOTES.md.tmp && mv RELEASE_NOTES.md.tmp RELEASE_NOTES.md
+          if [ -s RELEASE_NOTES.md ]; then
+            echo "has_notes=true" >> "$GITHUB_OUTPUT"
+          else
             echo "::warning::No changelog section found for ${TAG}; using generated notes."
+            echo "has_notes=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: 'Create or update GitHub Release'
+      - name: 'Create or update GitHub Release (from CHANGELOG)'
+        if: steps.relnotes.outputs.has_notes == 'true'
         uses: softprops/action-gh-release@v2
         with:
           files: ${{ env.ZIP_PATH }}
           name: Alt-Click Status ${{ steps.meta.outputs.tag }}
           tag_name: ${{ steps.meta.outputs.tag }}
-          draft: false
-          prerelease: false
+          body_path: RELEASE_NOTES.md
+          generate_release_notes: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 'Create or update GitHub Release (auto notes)'
+        if: steps.relnotes.outputs.has_notes != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ZIP_PATH }}
+          name: Alt-Click Status ${{ steps.meta.outputs.tag }}
+          tag_name: ${{ steps.meta.outputs.tag }}
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -151,7 +166,6 @@ jobs:
                 min=$((10#${digits:1:2}))
                 pat=$((10#${digits:3:2}))
               else
-                # heuristic for 6+ digits (retail-style): MMmmpp -> MM.mmp.p  (works for 10.x.y, 11.x.y)
                 maj=$((10#${digits:0:2}))
                 min=$((10#${digits:2:2}))
                 pat=$((10#${digits:4:2}))

@@ -12,6 +12,7 @@ and [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 - Alt + keybind (e.g., Alt+1) no longer triggers announcements. Announcements now fire only on Alt+Left mouse clicks. (#12)
+- Announcements now report **Not enough _Resource_** (Mana/Rage/Energy/Focus) when a spell is otherwise ready but you lack resources. Includes `(have/need)` when available via `GetSpellPowerCost`. (#17)
 
 ### Removed
 - 

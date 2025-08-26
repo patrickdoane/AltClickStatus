@@ -1,0 +1,15 @@
+# .github/workflows/changelog-check.yml
+name: changelog-check
+on: [pull_request]
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          if [[ "${{ contains(join(github.event.pull_request.labels.*.name, ','), 'release') }}" == "true" ]]; then
+            if ! awk '/^## \[Unreleased\]/{f=1;next}/^## \[v[0-9]+\.[0-9]+\.[0-9]+\]/{f=0} f && /-/{found=1} END{exit !found}' CHANGELOG.md; then
+              echo "::error::CHANGELOG.md Unreleased section has no bullets."
+              exit 1
+            fi
+          fi

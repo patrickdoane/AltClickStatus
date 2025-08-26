@@ -26,6 +26,5 @@
 - [ ] If this changes behavior, I added a short line under **Notes for Users**.
 - [ ] Tested in-game on Classic Era (ElvUI if relevant).
 
-<!-- Optional: Link issues/PRs -->
 Fixes #...
 Refs #...

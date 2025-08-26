@@ -1,7 +1,6 @@
-
 -- Alt-Click Status (Classic Era + ElvUI)
--- Issue #12: STRICT mouse-only gate.
--- Only real Alt+Left mouse clicks announce. Alt+keybinds (Alt+1, etc.) never announce.
+-- Issue #12: STRICT mouse-only gate (already integrated).
+-- Issue #17: Announce "Not enough <Resource>" when the spell can't be cast due to insufficient power.
 
 local A = CreateFrame("Frame", "AltClickStatusFrame")
 A.CHANNEL_MODE = "AUTO"; A.THROTTLE_SEC = 0.75
@@ -16,8 +15,9 @@ local lastSentAt = 0
 local function pct(c,m) if not c or not m or m==0 then return 0 end return math.floor((c/m)*100+0.5) end
 local function chooseChannel()
     if A.CHANNEL_MODE~="AUTO" then return A.CHANNEL_MODE end
-    if IsInRaid() then return "RAID" end
-    if IsInGroup() then return "PARTY" end
+    if IsInRaid and IsInRaid() then return "RAID" end
+    if IsInGroup and IsInGroup(LE_PARTY_CATEGORY_INSTANCE) then return "INSTANCE_CHAT" end
+    if IsInGroup and IsInGroup() then return "PARTY" end
     return "SAY"
 end
 local function safeSend(msg)
@@ -28,12 +28,10 @@ local function safeSend(msg)
 end
 
 -- -------------------------------
--- STRICT mouse-only gate
+-- STRICT mouse-only gate (issue #12)
 -- -------------------------------
 local MOUSE_WINDOW = 0.50 -- seconds
 local function ACS_PreClick(self, button)
-    -- PreClick runs for both mouse and keybind activations.
-    -- Clamp to true only when the left mouse button is actually depressed at this moment.
     self.__ACS_preWasMouse = (button == "LeftButton") and IsMouseButtonDown("LeftButton") or false
     self.__ACS_preTime = GetTime()
     self.__ACS_preAlt  = IsAltKeyDown()
@@ -42,7 +40,6 @@ end
 local function ACS_OnMouseDown(self, button)
     if button ~= "LeftButton" then return end
     if not IsAltKeyDown() then return end
-    -- Record a recent left mouse press on this exact frame.
     self.__ACS_lastMouseDown = GetTime()
 end
 
@@ -57,12 +54,9 @@ end
 local function ACS_IsStrictMouse(self)
     local now = GetTime()
     if not self then return false end
-    -- Must have been a PreClick with left mouse actually down
     if not self.__ACS_preWasMouse then return false end
     if not self.__ACS_preTime or (now - self.__ACS_preTime) > 1.0 then return false end
-    -- Must ALSO have a very recent OnMouseDown on the same frame
     if not self.__ACS_lastMouseDown or (now - self.__ACS_lastMouseDown) > MOUSE_WINDOW then return false end
-    -- Optional: ensure cursor is still over the frame to avoid stray marks
     if self.IsMouseOver and not self:IsMouseOver() then return false end
     return true
 end
@@ -78,6 +72,36 @@ local function getSpellNameAndRank(token)
     return name or tostring(token)
 end
 
+local function resourceNameAndIDs(spellToken)
+    local id, token = UnitPowerType("player")
+    local pretty = _G[token] or token or "Power"
+    return pretty, id, token
+end
+
+local function formatNotEnoughResource(spellToken, rangeTxt)
+    local resName, powID = resourceNameAndIDs(spellToken)
+    local have = UnitPower("player", powID) or 0
+    local needTxt = ""
+
+    local ok, getCost = pcall(function() return GetSpellPowerCost end)
+    if ok and type(getCost)=="function" then
+        local costs = getCost(spellToken)
+        if type(costs)=="table" then
+            local required = nil
+            for _,ci in ipairs(costs) do
+                if ci and ci.type == powID then
+                    required = ci.cost or ci.minCost or required
+                end
+            end
+            if required and required > 0 then
+                needTxt = string.format(" (%d/%d)", have, required)
+            end
+        end
+    end
+
+    return string.format("Not enough %s%s · %s", resName, needTxt, rangeTxt)
+end
+
 local function formatSpellStatus(token)
     local name = getSpellNameAndRank(token)
     local start, dur, enabled = GetSpellCooldown(token)
@@ -87,23 +111,38 @@ local function formatSpellStatus(token)
     local inR = IsSpellInRange(token, "target")
     local rangeTxt = (inR==1 and "In Range") or (inR==0 and "Out of Range") or "Range N/A"
 
+    if enabled == 0 then
+        return string.format("%s > Not Usable · %s", name, rangeTxt)
+    end
+
     if maxCharges and maxCharges > 1 then
         if charges and charges > 0 then
+            local usable, oom = IsUsableSpell(token)
+            if usable ~= true and oom == true then
+                return string.format("%s > %s", name, formatNotEnoughResource(token, rangeTxt))
+            end
             return string.format("%s > Ready (%d/%d) · %s", name, charges, maxCharges, rangeTxt)
         else
             local r = chStart and chDur and math.max(0,(chStart+chDur)-GetTime()) or 0
             return string.format("%s > Recharging (%.0fs) · %s", name, r, rangeTxt)
         end
     end
-    if enabled == 0 then return string.format("%s > Not Usable · %s", name, rangeTxt) end
+
     if start and dur and dur > 1.5 and (GetTime() < (start + dur)) then
         local r = math.max(0,(start+dur)-GetTime())
         return string.format("%s > On Cooldown (%.0fs) · %s", name, r, rangeTxt)
     end
+
     if onGCD then
         local r = math.max(0,(gS+gD)-GetTime())
         return string.format("%s > On GCD (%.1fs) · %s", name, r, rangeTxt)
     end
+
+    local usable, oom = IsUsableSpell(token)
+    if usable ~= true and oom == true then
+        return string.format("%s > %s", name, formatNotEnoughResource(token, rangeTxt))
+    end
+
     return string.format("%s > Ready · %s", name, rangeTxt)
 end
 
@@ -167,7 +206,6 @@ function AltClickStatus_AltClick(btn)
     if not btn then return end
 
     local isMouse = ACS_IsStrictMouse(btn)
-    -- Always clear marks to avoid sticky state
     ACS_ClearFlags(btn)
 
     if not isMouse then return end

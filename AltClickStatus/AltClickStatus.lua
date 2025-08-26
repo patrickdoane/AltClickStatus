@@ -1,6 +1,6 @@
--- Alt-Click Status v0.3.0j (Classic Era + ElvUI)
--- Hotfix: robust macro parser for /cast lines with chained conditionals, e.g. `/cast [@cursor][] Blizzard`.
--- Issue #12 fix: Only announce on real Alt+Left mouse clicks (ignore Alt+keybinds like Alt+1).
+-- Alt-Click Status v0.3.0b (Classic Era + ElvUI)
+-- Issue #12 hotfix: ensure Alt+keybinds (Alt+1, etc.) do NOT announce by
+-- gating on real Alt+Left mouse clicks AND clearing the mouse mark inside the macro entry point.
 
 local A = CreateFrame("Frame", "AltClickStatusFrame")
 A.CHANNEL_MODE = "AUTO"; A.THROTTLE_SEC = 0.75
@@ -29,7 +29,6 @@ end
 -- -------------------------------
 -- Mouse-origin gate (issue #12)
 -- -------------------------------
--- True only if this frame saw a recent Alt+Left mouse down (keyboard hotkeys won't set this).
 local function ACS_WasAltMouseClick(frame)
     if not frame or type(frame) ~= "table" then return false end
     local t = frame.__ACS_altMouseClickTime
@@ -38,9 +37,19 @@ end
 
 local function ACS_MarkAltMouseDown(self, button)
     if button ~= "LeftButton" or not IsAltKeyDown() then return end
-    -- Only consider action-type buttons (secure or classic)
     if self and type(self) == "table" then
+        -- verify it's an action button-ish frame
         local isAction = (type(self.GetAttribute)=="function" and (self:GetAttribute("type")=="action" or self:GetAttribute("action"))) or self.action
+        if not isAction then
+            -- climb to parent that is an action button
+            local p = self
+            while p and p ~= UIParent do
+                if type(p.GetAttribute)=="function" and (p:GetAttribute("type")=="action" or p:GetAttribute("action")) or p.action then
+                    self = p; isAction = true; break
+                end
+                p = p:GetParent()
+            end
+        end
         if isAction then
             self.__ACS_altMouseClickTime = GetTime()
             self.__ACS_altMouseClick = true
@@ -55,7 +64,7 @@ local function ACS_ClearMouseMark(self)
     end
 end
 
--- Safety net: if user Alt+Left clicks directly, capture the focused frame
+-- Safety net: mark the focused frame on Alt+Left mouse down
 if WorldFrame and WorldFrame.HookScript then
     WorldFrame:HookScript("OnMouseDown", function(_, button)
         if button ~= "LeftButton" or not IsAltKeyDown() then return end
@@ -107,37 +116,32 @@ local function formatSpellStatus(token)
 end
 
 -- -------------------------------
--- Macro parsing (hotfix)
+-- Macro parsing (robust for `[]`)
 -- -------------------------------
 local function ExtractCastTokenFromMacro(body)
     if not body or body == "" then return nil end
-    -- Iterate macro lines; consider the first /cast or /castsequence
     for line in body:gmatch("[^\r\n]+") do
         local cmd = line:match("^%s*/(%a+)")
         if cmd then
             cmd = cmd:lower()
             if cmd == "cast" or cmd == "castsequence" then
-                -- strip the command
                 local rest = line:gsub("^%s*/%a+%s*", "")
-                -- repeatedly strip leading [...] blocks (handles [@cursor][] etc)
-                local prev
                 repeat
-                    prev = rest
+                    local prev = rest
                     rest = rest:gsub("^%s*%b[]%s*", "")
-                until rest == prev
-                -- castsequence: drop reset=... options at the start if present
+                    if rest == prev then break end
+                until false
                 if cmd == "castsequence" then
-                    local before
                     repeat
-                        before = rest
+                        local before = rest
                         rest = rest:gsub("^%s*reset=[^,; ]+%s*,?%s*", "")
-                    until rest == before
+                        if rest == before then break end
+                    until false
                 end
-                -- take the first token up to comma/semicolon/EOL (allow spaces inside spell names)
                 local token = rest:match("^([^,;]+)")
                 if token then
                     token = token:gsub("^%s+",""):gsub("%s+$","")
-                    token = token:gsub("^!+","") -- strip leading !
+                    token = token:gsub("^!+","")
                     if token ~= "" and token ~= "[]" then
                         return token
                     end
@@ -148,17 +152,15 @@ local function ExtractCastTokenFromMacro(body)
     return nil
 end
 
--- Given an ActionButton, figure out what it holds. Return spell token (id or name).
 local function getSpellFromActionButton(btn)
     if not btn or not btn.action then return nil end
     local action = btn.action
-    local t, id, subType = GetActionInfo(action)
+    local t, id = GetActionInfo(action)
     if t == "spell" and id then
         return id
     elseif t == "macro" and id then
         local name, icon, body = GetMacroInfo(id)
         if body then
-            -- Use robust parser (handles `/cast [@cursor][] Blizzard`)
             local spell = ExtractCastTokenFromMacro(body)
             if spell then return spell end
         end
@@ -167,12 +169,22 @@ local function getSpellFromActionButton(btn)
 end
 
 -- -------------------------------
--- Public entry for macro override (prevents casting on Alt+LeftClick)
+-- Macro entry point (no cast on Alt+LeftClick)
 -- -------------------------------
 function AltClickStatus_AltClick(btn)
     if not btn or not IsAltKeyDown() then return end
-    -- Mouse-only guard: ignore Alt+keybind activations (issue #12)
-    if not ACS_WasAltMouseClick(btn) then return end
+    local wasMouse = ACS_WasAltMouseClick(btn)
+
+    -- Always clear any previous mark immediately, even if it was mouse-origin.
+    -- This prevents sticky marks in cases where PostClick isn't fired.
+    if btn then
+        btn.__ACS_altMouseClick = nil
+        btn.__ACS_altMouseClickTime = nil
+    end
+
+    if not wasMouse then
+        return -- Alt+keybind (or stale state) -> ignore
+    end
 
     local tok = getSpellFromActionButton(btn)
     if tok then
@@ -182,16 +194,15 @@ function AltClickStatus_AltClick(btn)
     end
 end
 
--- Avoid double-announce: placeholder (kept for future use)
+-- -------------------------------
+-- Secure override + hooks
+-- -------------------------------
 local function onAnyActionClick(self, button)
     if not A.ENABLE_ACTIONBAR then return end
     if button ~= "LeftButton" then return end
     if IsAltKeyDown() then return end
 end
 
--- -------------------------------
--- Secure override setup (no cast on Alt+LeftClick)
--- -------------------------------
 local function setupAltOverride(btn, name)
     if not btn or not btn.SetAttribute or not name then return false end
     if InCombatLockdown() then return false end
@@ -272,7 +283,7 @@ local function configureElvUIButtons()
                 local p,pm=UnitPower("target"),UnitPowerMax("target")
                 local _,tk=UnitPowerType("target"); local pn=_G[tk] or tk or "Power"
                 local nm=UnitName("target") or "target"
-                safeSend(("%s: %d%% HP, %d%% %s."):format(nm, pct(hp,hm), pct(p,pm), pn))
+                safeSend(("%s: %d%% HP, %d%% %s."):format(nm, pct(hp,hm), pn and pct(p,pm) or 0, pn or "Power"))
             end
         end); eft.__ACS_Hooked=true
     end

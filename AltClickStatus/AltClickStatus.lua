@@ -1,10 +1,12 @@
+
 -- Alt-Click Status (Classic Era + ElvUI)
--- Issue #12: STRICT mouse-only gate (already integrated).
--- Issue #17: Announce "Not enough <Resource>" when the spell can't be cast due to insufficient power.
+-- Hidden toggle: `/acs showrange on|off|toggle` (default OFF). No persistence yet.
+-- Keeps strict mouse-only gate (#12) and insufficient resource messaging (#17).
 
 local A = CreateFrame("Frame", "AltClickStatusFrame")
 A.CHANNEL_MODE = "AUTO"; A.THROTTLE_SEC = 0.75
 A.ENABLE_ACTIONBAR = true; A.ENABLE_UNITFRAMES = true; A.ENABLE_ELVUI_HOOKS = true
+A.SHOW_RANGE = false -- runtime only (hidden toggle)
 A.DEBUG = false
 local function dprint(...) if A.DEBUG then print("|cff99ccff[ACS]|r", ...) end end
 
@@ -78,7 +80,15 @@ local function resourceNameAndIDs(spellToken)
     return pretty, id, token
 end
 
-local function formatNotEnoughResource(spellToken, rangeTxt)
+local function rangeSuffix(token)
+    if not A.SHOW_RANGE then return "" end
+    local inR = IsSpellInRange(token, "target")
+    if inR == 1 then return " · In Range" end
+    if inR == 0 then return " · Out of Range" end
+    return "" -- suppress "Range N/A" when toggle is on but API can't tell
+end
+
+local function formatNotEnoughResource(spellToken)
     local resName, powID = resourceNameAndIDs(spellToken)
     local have = UnitPower("player", powID) or 0
     local needTxt = ""
@@ -99,7 +109,7 @@ local function formatNotEnoughResource(spellToken, rangeTxt)
         end
     end
 
-    return string.format("Not enough %s%s · %s", resName, needTxt, rangeTxt)
+    return string.format("Not enough %s%s", resName, needTxt)
 end
 
 local function formatSpellStatus(token)
@@ -108,42 +118,41 @@ local function formatSpellStatus(token)
     local charges, maxCharges, chStart, chDur = GetSpellCharges and GetSpellCharges(token) or nil
     local gS, gD = GetSpellCooldown(61304)
     local onGCD = (gD and gD>0 and (GetTime() < (gS+gD))) and true or false
-    local inR = IsSpellInRange(token, "target")
-    local rangeTxt = (inR==1 and "In Range") or (inR==0 and "Out of Range") or "Range N/A"
+    local rSfx = rangeSuffix(token)
 
     if enabled == 0 then
-        return string.format("%s > Not Usable · %s", name, rangeTxt)
+        return string.format("%s > Not Usable%s", name, rSfx)
     end
 
     if maxCharges and maxCharges > 1 then
         if charges and charges > 0 then
             local usable, oom = IsUsableSpell(token)
             if usable ~= true and oom == true then
-                return string.format("%s > %s", name, formatNotEnoughResource(token, rangeTxt))
+                return string.format("%s > %s%s", name, formatNotEnoughResource(token), rSfx)
             end
-            return string.format("%s > Ready (%d/%d) · %s", name, charges, maxCharges, rangeTxt)
+            return string.format("%s > Ready (%d/%d)%s", name, charges, maxCharges, rSfx)
         else
             local r = chStart and chDur and math.max(0,(chStart+chDur)-GetTime()) or 0
-            return string.format("%s > Recharging (%.0fs) · %s", name, r, rangeTxt)
+            return string.format("%s > Recharging (%.0fs)%s", name, r, rSfx)
         end
     end
 
     if start and dur and dur > 1.5 and (GetTime() < (start + dur)) then
         local r = math.max(0,(start+dur)-GetTime())
-        return string.format("%s > On Cooldown (%.0fs) · %s", name, r, rangeTxt)
+        return string.format("%s > On Cooldown (%.0fs)%s", name, r, rSfx)
     end
 
     if onGCD then
         local r = math.max(0,(gS+gD)-GetTime())
-        return string.format("%s > On GCD (%.1fs) · %s", name, r, rangeTxt)
+        return string.format("%s > On GCD (%.1fs)%s", name, r, rSfx)
     end
 
     local usable, oom = IsUsableSpell(token)
     if usable ~= true and oom == true then
-        return string.format("%s > %s", name, formatNotEnoughResource(token, rangeTxt))
+        return string.format("%s > %s%s", name, formatNotEnoughResource(token), rSfx)
     end
 
-    return string.format("%s > Ready · %s", name, rangeTxt)
+    return string.format("%s > Ready%s", name, rSfx)
 end
 
 -- -------------------------------
@@ -327,6 +336,18 @@ SlashCmdList["ALTCSTATUS"]=function(msg)
         A.ENABLE_UNITFRAMES=not A.ENABLE_UNITFRAMES; print("Alt-Click Status: unit frame hooks", A.ENABLE_UNITFRAMES and "ON" or "OFF"); return
     elseif msg=="toggle elv" then
         A.ENABLE_ELVUI_HOOKS=not A.ENABLE_ELVUI_HOOKS; print("Alt-Click Status: ElvUI hooks", A.ENABLE_ELVUI_HOOKS and "ON" or "OFF"); return
+    elseif msg:match("^showrange") then
+        local arg = msg:match("^showrange%s+(%S+)")
+        if arg == "on" then
+            A.SHOW_RANGE = true; print("Alt-Click Status: range text ON")
+        elseif arg == "off" then
+            A.SHOW_RANGE = false; print("Alt-Click Status: range text OFF")
+        elseif arg == "toggle" or arg == nil then
+            A.SHOW_RANGE = not A.SHOW_RANGE; print("Alt-Click Status: range text", A.SHOW_RANGE and "ON" or "OFF")
+        else
+            print("Alt-Click Status: showrange expects on|off|toggle")
+        end
+        return
     elseif msg=="hook elv" then
         ensureConfigured(); print("Alt-Click Status: reconfigured now."); return
     elseif msg=="debug on" then
@@ -334,6 +355,7 @@ SlashCmdList["ALTCSTATUS"]=function(msg)
     elseif msg=="debug off" then
         A.DEBUG=false; print("Alt-Click Status: DEBUG OFF"); return
     end
+    -- Hidden toggle 'showrange' is not listed here on purpose
     print("Alt-Click Status usage:")
     print("  /acs auto|say|party|raid     - set output channel")
     print("  /acs toggle bar              - enable/disable action bar Alt+Click")

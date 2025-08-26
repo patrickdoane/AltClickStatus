@@ -5,7 +5,7 @@ and [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 ### Added
-- 
+- ElvUI unit frames: Alt+LeftClick announces HP/Power (player, target, focus, pet).
 
 ### Changed
 - 

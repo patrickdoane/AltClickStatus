@@ -1,6 +1,7 @@
--- Alt-Click Status v0.3.0b (Classic Era + ElvUI)
--- Issue #12 hotfix: ensure Alt+keybinds (Alt+1, etc.) do NOT announce by
--- gating on real Alt+Left mouse clicks AND clearing the mouse mark inside the macro entry point.
+
+-- Alt-Click Status (Classic Era + ElvUI)
+-- Issue #12: STRICT mouse-only gate.
+-- Only real Alt+Left mouse clicks announce. Alt+keybinds (Alt+1, etc.) never announce.
 
 local A = CreateFrame("Frame", "AltClickStatusFrame")
 A.CHANNEL_MODE = "AUTO"; A.THROTTLE_SEC = 0.75
@@ -27,52 +28,43 @@ local function safeSend(msg)
 end
 
 -- -------------------------------
--- Mouse-origin gate (issue #12)
+-- STRICT mouse-only gate
 -- -------------------------------
-local function ACS_WasAltMouseClick(frame)
-    if not frame or type(frame) ~= "table" then return false end
-    local t = frame.__ACS_altMouseClickTime
-    return t and (GetTime() - t) < 0.75 or false
+local MOUSE_WINDOW = 0.50 -- seconds
+local function ACS_PreClick(self, button)
+    -- PreClick runs for both mouse and keybind activations.
+    -- Clamp to true only when the left mouse button is actually depressed at this moment.
+    self.__ACS_preWasMouse = (button == "LeftButton") and IsMouseButtonDown("LeftButton") or false
+    self.__ACS_preTime = GetTime()
+    self.__ACS_preAlt  = IsAltKeyDown()
 end
 
-local function ACS_MarkAltMouseDown(self, button)
-    if button ~= "LeftButton" or not IsAltKeyDown() then return end
-    if self and type(self) == "table" then
-        -- verify it's an action button-ish frame
-        local isAction = (type(self.GetAttribute)=="function" and (self:GetAttribute("type")=="action" or self:GetAttribute("action"))) or self.action
-        if not isAction then
-            -- climb to parent that is an action button
-            local p = self
-            while p and p ~= UIParent do
-                if type(p.GetAttribute)=="function" and (p:GetAttribute("type")=="action" or p:GetAttribute("action")) or p.action then
-                    self = p; isAction = true; break
-                end
-                p = p:GetParent()
-            end
-        end
-        if isAction then
-            self.__ACS_altMouseClickTime = GetTime()
-            self.__ACS_altMouseClick = true
-        end
-    end
+local function ACS_OnMouseDown(self, button)
+    if button ~= "LeftButton" then return end
+    if not IsAltKeyDown() then return end
+    -- Record a recent left mouse press on this exact frame.
+    self.__ACS_lastMouseDown = GetTime()
 end
 
-local function ACS_ClearMouseMark(self)
-    if self then
-        self.__ACS_altMouseClick = nil
-        self.__ACS_altMouseClickTime = nil
-    end
+local function ACS_ClearFlags(self)
+    if not self then return end
+    self.__ACS_preWasMouse = nil
+    self.__ACS_preTime = nil
+    self.__ACS_preAlt  = nil
+    self.__ACS_lastMouseDown = nil
 end
 
--- Safety net: mark the focused frame on Alt+Left mouse down
-if WorldFrame and WorldFrame.HookScript then
-    WorldFrame:HookScript("OnMouseDown", function(_, button)
-        if button ~= "LeftButton" or not IsAltKeyDown() then return end
-        local f = GetMouseFocus()
-        if f and type(f)=="table" then
-            ACS_MarkAltMouseDown(f, "LeftButton")
-        end
-    end)
+local function ACS_IsStrictMouse(self)
+    local now = GetTime()
+    if not self then return false end
+    -- Must have been a PreClick with left mouse actually down
+    if not self.__ACS_preWasMouse then return false end
+    if not self.__ACS_preTime or (now - self.__ACS_preTime) > 1.0 then return false end
+    -- Must ALSO have a very recent OnMouseDown on the same frame
+    if not self.__ACS_lastMouseDown or (now - self.__ACS_lastMouseDown) > MOUSE_WINDOW then return false end
+    -- Optional: ensure cursor is still over the frame to avoid stray marks
+    if self.IsMouseOver and not self:IsMouseOver() then return false end
+    return true
 end
 
 -- -------------------------------
@@ -159,7 +151,7 @@ local function getSpellFromActionButton(btn)
     if t == "spell" and id then
         return id
     elseif t == "macro" and id then
-        local name, icon, body = GetMacroInfo(id)
+        local _, _, body = GetMacroInfo(id)
         if body then
             local spell = ExtractCastTokenFromMacro(body)
             if spell then return spell end
@@ -172,19 +164,14 @@ end
 -- Macro entry point (no cast on Alt+LeftClick)
 -- -------------------------------
 function AltClickStatus_AltClick(btn)
-    if not btn or not IsAltKeyDown() then return end
-    local wasMouse = ACS_WasAltMouseClick(btn)
+    if not btn then return end
 
-    -- Always clear any previous mark immediately, even if it was mouse-origin.
-    -- This prevents sticky marks in cases where PostClick isn't fired.
-    if btn then
-        btn.__ACS_altMouseClick = nil
-        btn.__ACS_altMouseClickTime = nil
-    end
+    local isMouse = ACS_IsStrictMouse(btn)
+    -- Always clear marks to avoid sticky state
+    ACS_ClearFlags(btn)
 
-    if not wasMouse then
-        return -- Alt+keybind (or stale state) -> ignore
-    end
+    if not isMouse then return end
+    if not IsAltKeyDown() then return end
 
     local tok = getSpellFromActionButton(btn)
     if tok then
@@ -214,11 +201,14 @@ local function setupAltOverride(btn, name)
     return true
 end
 
-local function hookMouseOrigin(btn)
-    if not btn or not btn.HookScript or btn.__ACS_MouseHooked or InCombatLockdown() then return end
-    btn:HookScript("OnMouseDown", ACS_MarkAltMouseDown)
-    btn:HookScript("PostClick", ACS_ClearMouseMark)
-    btn.__ACS_MouseHooked = true
+local function hookButton(btn)
+    if not btn or btn.__ACS_AllHooks or InCombatLockdown() then return end
+    if btn.HookScript then
+        btn:HookScript("PreClick", ACS_PreClick)
+        btn:HookScript("OnMouseDown", ACS_OnMouseDown)
+        btn:HookScript("PostClick", ACS_ClearFlags)
+    end
+    btn.__ACS_AllHooks = true
 end
 
 local BLIZZ_PREFIX = {"ActionButton","MultiBarBottomLeftButton","MultiBarBottomRightButton","MultiBarRightButton","MultiBarLeftButton"}
@@ -230,16 +220,15 @@ local function configureBlizzardButtons()
             local b=_G[name]
             if b then
                 if setupAltOverride(b,name) then conf=conf+1 end
-                if b.HookScript and not b.__ACS_Hooked and not InCombatLockdown() then
+                if b.HookScript and not b.__ACS_ClickHooked and not InCombatLockdown() then
                     b:HookScript("OnClick", onAnyActionClick)
-                    b.__ACS_Hooked=true
-                    hook=hook+1
+                    b.__ACS_ClickHooked=true
                 end
-                hookMouseOrigin(b)
+                hookButton(b); hook=hook+1
             end
         end
     end
-    dprint("Configured Blizzard alt overrides:",conf,"Hooked:",hook)
+    dprint("Configured Blizzard buttons:",conf,"overrides; hooked:",hook)
 end
 
 local function configureElvUIButtons()
@@ -251,42 +240,15 @@ local function configureElvUIButtons()
             local b=_G[name]
             if b then
                 if setupAltOverride(b,name) then conf=conf+1 end
-                if b.HookScript and not b.__ACS_Hooked and not InCombatLockdown() then
+                if b.HookScript and not b.__ACS_ClickHooked and not InCombatLockdown() then
                     b:HookScript("OnClick", onAnyActionClick)
-                    b.__ACS_Hooked=true
-                    hook=hook+1
+                    b.__ACS_ClickHooked=true
                 end
-                hookMouseOrigin(b)
+                hookButton(b); hook=hook+1
             end
         end
     end
-    dprint("Configured ElvUI alt overrides:",conf,"Hooked:",hook)
-    -- Unit frames (unchanged)
-    local efp=_G["ElvUF_Player"]
-    if efp and not efp.__ACS_Hooked and efp.HookScript and not InCombatLockdown() then
-        efp:HookScript("OnMouseUp", function(self,button)
-            if not A.ENABLE_UNITFRAMES then return end
-            if button=="LeftButton" and IsAltKeyDown() then
-                local hp,hm=UnitHealth("player"),UnitHealthMax("player")
-                local p,pm=UnitPower("player"),UnitPowerMax("player")
-                local _,tk=UnitPowerType("player"); local pn=_G[tk] or tk or "Power"
-                safeSend(("I have %d%% HP, %d%% %s."):format(pct(hp,hm), pct(p,pm), pn))
-            end
-        end); efp.__ACS_Hooked=true
-    end
-    local eft=_G["ElvUF_Target"]
-    if eft and not eft.__ACS_Hooked and eft.HookScript and not InCombatLockdown() then
-        eft:HookScript("OnMouseUp", function(self,button)
-            if not A.ENABLE_UNITFRAMES then return end
-            if button=="LeftButton" and IsAltKeyDown() then
-                local hp,hm=UnitHealth("target"),UnitHealthMax("target")
-                local p,pm=UnitPower("target"),UnitPowerMax("target")
-                local _,tk=UnitPowerType("target"); local pn=_G[tk] or tk or "Power"
-                local nm=UnitName("target") or "target"
-                safeSend(("%s: %d%% HP, %d%% %s."):format(nm, pct(hp,hm), pn and pct(p,pm) or 0, pn or "Power"))
-            end
-        end); eft.__ACS_Hooked=true
-    end
+    dprint("Configured ElvUI buttons:",conf,"overrides; hooked:",hook)
 end
 
 -- Deferral when in combat

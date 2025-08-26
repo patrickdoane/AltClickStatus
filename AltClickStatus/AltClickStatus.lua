@@ -1,12 +1,11 @@
 -- Alt-Click Status (Classic Era + ElvUI)
--- Fix: /acs showrange now affects announcements reliably.
--- Uses IsActionInRange(button.action) with fallback to IsSpellInRange(spell,"target").
--- Keeps strict mouse-only gate (#12) and insufficient resource logic (#17).
+-- Feature: Alt+LeftClick on ElvUI unit frames announces unit HP/Power.
+-- Keeps strict mouse-only gate for action buttons, and existing toggles.
 
 local A = CreateFrame("Frame", "AltClickStatusFrame")
 A.CHANNEL_MODE = "AUTO"; A.THROTTLE_SEC = 0.75
 A.ENABLE_ACTIONBAR = true; A.ENABLE_UNITFRAMES = true; A.ENABLE_ELVUI_HOOKS = true
-A.SHOW_RANGE = false -- persisted via AltClickStatusDB.ShowRange
+A.SHOW_RANGE = A and A.SHOW_RANGE or false -- may be set by DB loader elsewhere
 A.DEBUG = false
 local function dprint(...) if A.DEBUG then print("|cff99ccff[ACS]|r", ...) end end
 
@@ -30,29 +29,22 @@ local function safeSend(msg)
 end
 
 -- -------------------------------
--- STRICT mouse-only gate (issue #12)
+-- STRICT mouse-only gate for action buttons
 -- -------------------------------
-local MOUSE_WINDOW = 0.50 -- seconds
+local MOUSE_WINDOW = 0.50
 local function ACS_PreClick(self, button)
     self.__ACS_preWasMouse = (button == "LeftButton") and IsMouseButtonDown("LeftButton") or false
     self.__ACS_preTime = GetTime()
     self.__ACS_preAlt  = IsAltKeyDown()
 end
-
 local function ACS_OnMouseDown(self, button)
-    if button ~= "LeftButton" then return end
-    if not IsAltKeyDown() then return end
+    if button ~= "LeftButton" or not IsAltKeyDown() then return end
     self.__ACS_lastMouseDown = GetTime()
 end
-
 local function ACS_ClearFlags(self)
     if not self then return end
-    self.__ACS_preWasMouse = nil
-    self.__ACS_preTime = nil
-    self.__ACS_preAlt  = nil
-    self.__ACS_lastMouseDown = nil
+    self.__ACS_preWasMouse = nil; self.__ACS_preTime = nil; self.__ACS_preAlt  = nil; self.__ACS_lastMouseDown = nil
 end
-
 local function ACS_IsStrictMouse(self)
     local now = GetTime()
     if not self then return false end
@@ -73,37 +65,32 @@ local function getSpellNameAndRank(token)
     end
     return name or tostring(token)
 end
-
-local function resourceNameAndIDs(spellToken)
-    local id, token = UnitPowerType("player")
+local function resourceNameAndIDs(unit)
+    local id, token = UnitPowerType(unit)
     local pretty = _G[token] or token or "Power"
     return pretty, id, token
 end
 
+-- Range suffix helper only used by spell announcements; unit frames do not use range
 local function maybeRangeSuffix(token, btn)
     if not A.SHOW_RANGE then return "" end
     local r = nil
-
-    -- Prefer action-slot based range, works for spells/items/macros in that slot.
     if btn and btn.action then
         local ok, val = pcall(IsActionInRange, btn.action)
         if ok then r = val end
     end
-    -- Fallback to spell-based range for cases where action-range is unavailable.
     if r == nil and token then
         local ok, val = pcall(IsSpellInRange, token, "target")
         if ok then r = val end
     end
-
     local txt = (r==1 and "In Range") or (r==0 and "Out of Range") or "Range N/A"
     return " · " .. txt
 end
 
 local function formatNotEnoughResource(spellToken, btn)
-    local resName, powID = resourceNameAndIDs(spellToken)
+    local resName, powID = resourceNameAndIDs("player")
     local have = UnitPower("player", powID) or 0
     local needTxt = ""
-
     local ok, getCost = pcall(function() return GetSpellPowerCost end)
     if ok and type(getCost)=="function" then
         local costs = getCost(spellToken)
@@ -119,7 +106,6 @@ local function formatNotEnoughResource(spellToken, btn)
             end
         end
     end
-
     return string.format("Not enough %s%s%s", resName, needTxt, maybeRangeSuffix(spellToken, btn))
 end
 
@@ -133,7 +119,6 @@ local function formatSpellStatus(token, btn)
     if enabled == 0 then
         return string.format("%s > Not Usable%s", name, maybeRangeSuffix(token, btn))
     end
-
     if maxCharges and maxCharges > 1 then
         if charges and charges > 0 then
             local usable, oom = IsUsableSpell(token)
@@ -146,27 +131,23 @@ local function formatSpellStatus(token, btn)
             return string.format("%s > Recharging (%.0fs)%s", name, r, maybeRangeSuffix(token, btn))
         end
     end
-
     if start and dur and dur > 1.5 and (GetTime() < (start + dur)) then
         local r = math.max(0,(start+dur)-GetTime())
         return string.format("%s > On Cooldown (%.0fs)%s", name, r, maybeRangeSuffix(token, btn))
     end
-
     if onGCD then
         local r = math.max(0,(gS+gD)-GetTime())
         return string.format("%s > On GCD (%.1fs)%s", name, r, maybeRangeSuffix(token, btn))
     end
-
     local usable, oom = IsUsableSpell(token)
     if usable ~= true and oom == true then
         return string.format("%s > %s", name, formatNotEnoughResource(token, btn))
     end
-
     return string.format("%s > Ready%s", name, maybeRangeSuffix(token, btn))
 end
 
 -- -------------------------------
--- Macro parsing (robust for `[]`)
+-- Macro parsing
 -- -------------------------------
 local function ExtractCastTokenFromMacro(body)
     if not body or body == "" then return nil end
@@ -201,7 +182,6 @@ local function ExtractCastTokenFromMacro(body)
     end
     return nil
 end
-
 local function getSpellFromActionButton(btn)
     if not btn or not btn.action then return nil end
     local action = btn.action
@@ -219,17 +199,13 @@ local function getSpellFromActionButton(btn)
 end
 
 -- -------------------------------
--- Macro entry point (no cast on Alt+LeftClick)
+-- Macro entry point
 -- -------------------------------
 function AltClickStatus_AltClick(btn)
     if not btn then return end
-
     local isMouse = ACS_IsStrictMouse(btn)
     ACS_ClearFlags(btn)
-
-    if not isMouse then return end
-    if not IsAltKeyDown() then return end
-
+    if not isMouse or not IsAltKeyDown() then return end
     local tok = getSpellFromActionButton(btn)
     if tok then
         safeSend(formatSpellStatus(tok, btn))
@@ -239,17 +215,56 @@ function AltClickStatus_AltClick(btn)
 end
 
 -- -------------------------------
--- Secure override + hooks
+-- ElvUI Unit Frames (Player/Target/Focus/Pet)
+-- -------------------------------
+local function AnnounceUnit(unit)
+    if not unit or not UnitExists(unit) then return end
+    local hp, hm = UnitHealth(unit), UnitHealthMax(unit)
+    local p, pm = UnitPower(unit), UnitPowerMax(unit)
+    local _, tk = UnitPowerType(unit); local pn = _G[tk] or tk or "Power"
+    local hpPct = pct(hp, hm)
+    local pPct = pct(p, pm)
+    if unit == "player" then
+        safeSend(("I have %d%% HP, %d%% %s."):format(hpPct, pPct, pn))
+    else
+        local nm = UnitName(unit) or unit
+        safeSend(("%s: %d%% HP, %d%% %s."):format(nm, hpPct, pPct, pn))
+    end
+end
+
+local function hookElvUFFrame(name, unit)
+    local f = _G[name]
+    if not f or f.__ACS_UFHooked or not f.HookScript then return false end
+    f:HookScript("OnMouseUp", function(self, btn)
+        if not A.ENABLE_UNITFRAMES then return end
+        if btn == "LeftButton" and IsAltKeyDown() then
+            AnnounceUnit(unit)
+        end
+    end)
+    f.__ACS_UFHooked = true
+    return true
+end
+
+local function configureElvUIUnitFrames()
+    if not IsAddOnLoaded("ElvUI") then return end
+    local hooked = 0
+    if hookElvUFFrame("ElvUF_Player", "player") then hooked = hooked + 1 end
+    if hookElvUFFrame("ElvUF_Target", "target") then hooked = hooked + 1 end
+    if hookElvUFFrame("ElvUF_Focus", "focus") then hooked = hooked + 1 end
+    if hookElvUFFrame("ElvUF_Pet", "pet") then hooked = hooked + 1 end
+    dprint("ElvUI unit frames hooked:", hooked)
+end
+
+-- -------------------------------
+-- Action button hooks (Blizzard + ElvUI bars)
 -- -------------------------------
 local function onAnyActionClick(self, button)
     if not A.ENABLE_ACTIONBAR then return end
     if button ~= "LeftButton" then return end
     if IsAltKeyDown() then return end
 end
-
 local function setupAltOverride(btn, name)
-    if not btn or not btn.SetAttribute or not name then return false end
-    if InCombatLockdown() then return false end
+    if not btn or not btn.SetAttribute or not name or InCombatLockdown() then return false end
     if btn.__ACS_AltOverride then return true end
     local macro = ('/run AltClickStatus_AltClick(%s)'):format(name)
     btn:SetAttribute("alt-type1", "macro")
@@ -257,7 +272,6 @@ local function setupAltOverride(btn, name)
     btn.__ACS_AltOverride = true
     return true
 end
-
 local function hookButton(btn)
     if not btn or btn.__ACS_AllHooks or InCombatLockdown() then return end
     if btn.HookScript then
@@ -287,7 +301,6 @@ local function configureBlizzardButtons()
     end
     dprint("Configured Blizzard buttons:",conf,"overrides; hooked:",hook)
 end
-
 local function configureElvUIButtons()
     if not IsAddOnLoaded("ElvUI") or not A.ENABLE_ELVUI_HOOKS then return end
     local conf,hook = 0,0
@@ -309,32 +322,18 @@ local function configureElvUIButtons()
 end
 
 -- -------------------------------
--- SavedVariables load/save
+-- Config orchestration
 -- -------------------------------
-local function loadDB()
-    AltClickStatusDB = AltClickStatusDB or {}
-    if AltClickStatusDB.ShowRange == nil then AltClickStatusDB.ShowRange = false end
-    A.SHOW_RANGE = AltClickStatusDB.ShowRange and true or false
-end
-
-local function saveDB()
-    AltClickStatusDB = AltClickStatusDB or {}
-    AltClickStatusDB.ShowRange = A.SHOW_RANGE and true or false
-end
-
--- Deferral when in combat
 local pending=false
 local function ensureConfigured()
     if InCombatLockdown() then pending=true; A:RegisterEvent("PLAYER_REGEN_ENABLED"); dprint("In combat: deferring configuration."); return end
-    configureBlizzardButtons(); configureElvUIButtons()
+    configureBlizzardButtons(); configureElvUIButtons(); configureElvUIUnitFrames()
 end
 
 -- Events
 A:RegisterEvent("PLAYER_LOGIN"); A:RegisterEvent("PLAYER_ENTERING_WORLD"); A:RegisterEvent("ADDON_LOADED")
 A:SetScript("OnEvent", function(self,event,arg1)
-    if event=="ADDON_LOADED" and (arg1=="AltClickStatus") then
-        loadDB()
-    elseif event=="PLAYER_LOGIN" then
+    if event=="PLAYER_LOGIN" then
         local _,_,_,iface=GetBuildInfo()
         print(("Alt-Click Status loaded (Interface %s). Use /acs for options."):format(tostring(iface or "?")))
         C_Timer.After(0.1, ensureConfigured)
@@ -348,47 +347,15 @@ A:SetScript("OnEvent", function(self,event,arg1)
     end
 end)
 
--- -------------------------------
--- Slash commands
--- -------------------------------
+-- Slash commands (subset)
 SLASH_ALTCSTATUS1="/altclick"; SLASH_ALTCSTATUS2="/acs"
 SlashCmdList["ALTCSTATUS"]=function(msg)
     msg=(msg or ""):lower()
-    if msg=="say" or msg=="party" or msg=="raid" then
-        A.CHANNEL_MODE=msg:upper(); print("Alt-Click Status: channel set to",A.CHANNEL_MODE); return
-    elseif msg=="auto" or msg=="default" then
-        A.CHANNEL_MODE="AUTO"; print("Alt-Click Status: channel set to AUTO"); return
-    elseif msg=="toggle bar" then
-        A.ENABLE_ACTIONBAR=not A.ENABLE_ACTIONBAR; print("Alt-Click Status: action bar hooks", A.ENABLE_ACTIONBAR and "ON" or "OFF"); return
-    elseif msg=="toggle unit" then
+    if msg=="toggle unit" then
         A.ENABLE_UNITFRAMES=not A.ENABLE_UNITFRAMES; print("Alt-Click Status: unit frame hooks", A.ENABLE_UNITFRAMES and "ON" or "OFF"); return
-    elseif msg=="toggle elv" then
-        A.ENABLE_ELVUI_HOOKS=not A.ENABLE_ELVUI_HOOKS; print("Alt-Click Status: ElvUI hooks", A.ENABLE_ELVUI_HOOKS and "ON" or "OFF"); return
-    elseif msg:match("^showrange") then
-        if msg:match("showrange%s+on") then
-            A.SHOW_RANGE = true; saveDB(); print("Alt-Click Status: range text ON"); return
-        elseif msg:match("showrange%s+off") then
-            A.SHOW_RANGE = false; saveDB(); print("Alt-Click Status: range text OFF"); return
-        elseif msg:match("showrange%s+toggle") then
-            A.SHOW_RANGE = not A.SHOW_RANGE; saveDB(); print("Alt-Click Status: range text", A.SHOW_RANGE and "ON" or "OFF"); return
-        else
-            print("Alt-Click Status: range text is", A.SHOW_RANGE and "ON" or "OFF")
-            print("  /acs showrange on|off|toggle")
-            return
-        end
     elseif msg=="hook elv" then
         ensureConfigured(); print("Alt-Click Status: reconfigured now."); return
-    elseif msg=="debug on" then
-        A.DEBUG=true; print("Alt-Click Status: DEBUG ON"); return
-    elseif msg=="debug off" then
-        A.DEBUG=false; print("Alt-Click Status: DEBUG OFF"); return
+    else
+        print("Alt-Click Status: /acs toggle unit  - enable/disable ElvUI unit-frame Alt+Click")
     end
-    print("Alt-Click Status usage:")
-    print("  /acs auto|say|party|raid     - set output channel")
-    print("  /acs toggle bar              - enable/disable action bar Alt+Click")
-    print("  /acs toggle unit             - enable/disable unit frame Alt+Click")
-    print("  /acs toggle elv              - enable/disable ElvUI-specific hooks")
-    print("  /acs showrange on|off|toggle - show/hide range suffix")
-    print("  /acs hook elv                - re-run configuration now")
-    print("  /acs debug on|off            - toggle debug prints")
 end

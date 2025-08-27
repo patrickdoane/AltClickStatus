@@ -1,21 +1,12 @@
 # Alt-Click Status — Dev Dashboard (auto-generated)
 
-_Last updated: 2025-08-27 16:00 UTC_
+_Last updated: 2025-08-27 16:04 UTC_
 
 Repo: `patrickdoane/AltClickStatus`
 
 ---
 
 ## TODO
-_(none)_
-
-## DOING
-_(none)_
-
-## DONE
-_(none)_
-
-## Unlabeled (triage)
 - [ ] Role-aware macros (#37)
 - [ ] Buff/debuff announces (#36)
 - [ ] Release hygiene (#35)
@@ -29,3 +20,12 @@ _(none)_
 - [ ] Channel routing refinements (#27)
 - [ ] Party/Raid frames (ElvUI + Blizzard) (#26)
 - [ ] Items & /use support (trinkets/consumables) (#25)
+
+## DOING
+_(none)_
+
+## DONE
+_(none)_
+
+## Unlabeled (triage)
+_(none)_

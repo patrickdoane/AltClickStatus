@@ -1,0 +1,21 @@
+name: Bug report
+description: Something broke or errors appear
+labels: ["type/bug","status/todo"]
+body:
+  - type: input
+    id: build
+    attributes:
+      label: Addon version
+      placeholder: v0.3.0i (Classic Era 1.15.7)
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior / stack trace

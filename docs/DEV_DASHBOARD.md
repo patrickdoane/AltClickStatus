@@ -1,6 +1,6 @@
 # Alt-Click Status — Dev Dashboard (auto-generated)
 
-_Last updated: 2025-08-27 16:20 UTC_
+_Last updated: 2025-08-27 16:30 UTC_
 
 Repo: `patrickdoane/AltClickStatus`
 
@@ -19,10 +19,9 @@ Repo: `patrickdoane/AltClickStatus`
 - [ ] Spam guard & cooldown formatting (#28)
 - [ ] Channel routing refinements (#27)
 - [ ] Party/Raid frames (ElvUI + Blizzard) (#26)
-- [ ] Items & /use support (trinkets/consumables) (#25)
 
 ## DOING
-_(none)_
+- [ ] Items & /use support (trinkets/consumables) (#25)
 
 ## DONE
 _(none)_

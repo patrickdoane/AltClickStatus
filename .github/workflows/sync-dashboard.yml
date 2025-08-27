@@ -1,0 +1,115 @@
+name: sync-dev-dashboard
+on:
+  push:
+    branches: [ master ]
+    paths:
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/workflows/sync-dashboard.yml'
+  issues:
+    types: [opened, edited, deleted, labeled, unlabeled, reopened, closed]
+  issue_comment:
+    types: [created, edited, deleted]
+  pull_request:
+    types: [opened, edited, closed, reopened, synchronize, labeled, unlabeled]
+  workflow_dispatch:
+  schedule:
+    - cron: '10 * * * *' # hourly at :10
+
+permissions:
+  contents: write
+  issues: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install gh & jq if missing
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v jq >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y jq
+          fi
+          if ! command -v gh >/dev/null 2>&1; then
+            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+            sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list >/dev/null
+            sudo apt-get update
+            sudo apt-get install -y gh
+          fi
+          gh --version
+
+      - name: Ensure labels exist (status/type/area)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ensure() {
+            local name="$1"; local color="$2"; local desc="$3"
+            if gh label list --limit 200 --json name -q '.[]|select(.name=="'"$name"'")' | grep -q .; then
+              gh label edit "$name" --color "$color" --description "$desc" || true
+            else
+              gh label create "$name" --color "$color" --description "$desc" || true
+            fi
+          }
+          ensure "status/todo"  "0e8a16" "Queued"
+          ensure "status/doing" "1d76db" "In progress"
+          ensure "status/done"  "5319e7" "Completed"
+          ensure "type/bug"     "d73a4a" "Bug"
+          ensure "type/feat"    "0075ca" "Feature"
+          ensure "area/items"        "fbca04" "Items, trinkets, consumables"
+          ensure "area/unitframes"   "bfe5bf" "Unit frames"
+          ensure "area/actionbars"   "c2e0c6" "Action bars & macros"
+
+      - name: Generate docs/DEV_DASHBOARD.md from issues
+        id: gen
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          OUT=docs/DEV_DASHBOARD.md
+          mkdir -p docs
+          repo="${GITHUB_REPOSITORY}"
+          header="# Alt-Click Status — Dev Dashboard (auto-generated)\n\n_Last updated: $(date -u +'%Y-%m-%d %H:%M UTC')_\n\nRepo: \`${repo}\`\n\n---\n"
+          list() {
+            local label="$1"
+            gh issue list --repo "$repo" --state all --label "$label" --json number,title,state,url --limit 200               | jq -r '
+                  sort_by(.state) |
+                  map( "- [" + (if .state=="CLOSED" then "x" else " " end) + "] " + (.title|gsub("\n";" ")) + " (#" + (.number|tostring) + ")" ) | .[]'               || true
+          }
+          {
+            echo "$header"
+            echo "## TODO"
+            list "status/todo" || true
+            echo
+            echo "## DOING"
+            list "status/doing" || true
+            echo
+            echo "## DONE"
+            list "status/done" || true
+            echo
+            echo "## Unlabeled (triage)"
+            gh issue list --repo "$repo" --state open --json number,title,labels,url --limit 100               | jq -r 'map(select((.labels|length)==0)) | map("- [ ] " + (.title|gsub("\n";" ")) + " (#" + (.number|tostring) + ")") | .[]' || true
+          } > "$OUT"
+          echo "out=$OUT" >> "$GITHUB_OUTPUT"
+
+      - name: Commit dashboard if changed
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.email "actions@users.noreply.github.com"
+          git config user.name "github-actions"
+          if ! git diff --quiet -- docs/DEV_DASHBOARD.md; then
+            git add docs/DEV_DASHBOARD.md
+            git commit -m "chore(dashboard): sync issues to DEV_DASHBOARD.md"
+            git push
+          else
+            echo "No changes."
+          fi

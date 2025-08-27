@@ -1,30 +1,14 @@
 ## Summary
-<!-- Short, user-facing explanation of what this PR does. -->
+<!-- What does this change and why? -->
 
-## Changelog
-<!-- Add one bullet per change, grouped by section. Delete empty sections. -->
-### Added
-- 
+## Linked issues
+Closes #<issue-number>
 
-### Changed
-- 
-
-### Fixed
-- 
-
-### Removed
-- 
-
-### Notes for Users
-- 
-
-### Dev / API
-- 
+## Type
+- [ ] fix
+- [ ] feat
+- [ ] chore
 
 ## Checklist
-- [ ] I updated **CHANGELOG.md** (Unreleased) with user-facing bullets.
-- [ ] If this changes behavior, I added a short line under **Notes for Users**.
-- [ ] Tested in-game on Classic Era (ElvUI if relevant).
-
-Fixes #...
-Refs #...
+- [ ] Linted / tested locally
+- [ ] Updated CHANGELOG.md

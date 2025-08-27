@@ -86,34 +86,54 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          OUT=docs/DEV_DASHBOARD.md
-          mkdir -p docs
+          OUT="docs/DEV_DASHBOARD.md"
           repo="${GITHUB_REPOSITORY}"
-          header="# Alt-Click Status — Dev Dashboard (auto-generated)\n\n_Last updated: $(date -u +'%Y-%m-%d %H:%M UTC')_\n\nRepo: \`${repo}\`\n\n---\n"
-          list() {
-            local label="$1"
-            gh issue list --repo "$repo" --state all --label "$label" --json number,title,state,url --limit 200 \
-              | jq -r '
-                  sort_by(.state) |
-                  map( "- [" + (if .state=="CLOSED" then "x" else " " end) + "] " + (.title|gsub("\n";" ")) + " (#" + (.number|tostring) + ")" ) | .[]' \
-              || true
+          mkdir -p docs
+
+          # Header (use printf for real newlines)
+          printf '# Alt-Click Status — Dev Dashboard (auto-generated)\n\n' > "$OUT"
+          printf '_Last updated: %s_\n\n' "$(date -u +'%Y-%m-%d %H:%M UTC')" >> "$OUT"
+          printf 'Repo: `%s`\n\n---\n\n' "$repo" >> "$OUT"
+
+          gen_section () {
+            local title="$1" label="$2"
+            printf '## %s\n' "$title" >> "$OUT"
+            local lines
+            lines=$(gh issue list --repo "$repo" --state all --label "$label" --json number,title,state,url --limit 200 \
+              | jq -r 'sort_by(.state) | map("- [" + (if .state=="CLOSED" then "x" else " " end) + "] " + (.title|gsub("\n";" ")) + " (#" + (.number|tostring) + ")") | .[]' \
+              || true)
+            if [ -z "$lines" ]; then
+              printf '_(none)_\n\n' >> "$OUT"
+            else
+              printf '%s\n\n' "$lines" >> "$OUT"
+            fi
           }
-          {
-            echo "$header"
-            echo "## TODO"
-            list "status/todo" || true
-            echo
-            echo "## DOING"
-            list "status/doing" || true
-            echo
-            echo "## DONE"
-            list "status/done" || true
-            echo
-            echo "## Unlabeled (triage)"
-            gh issue list --repo "$repo" --state open --json number,title,labels,url --limit 100 \
-              | jq -r 'map(select((.labels|length)==0)) | map("- [ ] " + (.title|gsub("\n";" ")) + " (#" + (.number|tostring) + ")") | .[]' || true
-          } > "$OUT"
+
+          gen_section "TODO"  "status/todo"
+          gen_section "DOING" "status/doing"
+          gen_section "DONE"  "status/done"
+
+          # Triage = issues that DON'T have any status/* label (even if they have other labels)
+          printf '## Unlabeled (triage)\n' >> "$OUT"
+          triage=$(
+            gh issue list --repo "$repo" --state open --json number,title,labels,url --limit 200 \
+            | jq -r '
+                map(select( ( ([.labels[].name] // []) | any( . == "status/todo" or . == "status/doing" or . == "status/done") ) | not )) 
+                | map("- [ ] " + (.title|gsub("\n";" ")) + " (#" + (.number|tostring) + ")")
+                | .[]' 2>/dev/null \
+            || true
+          )
+          if [ -z "${triage:-}" ]; then
+            printf '_(none)_\n' >> "$OUT"
+          else
+            printf '%s\n' "$triage" >> "$OUT"
+          fi
+
           echo "out=$OUT" >> "$GITHUB_OUTPUT"
+
+      - name: Preview dashboard (first 60 lines)
+        if: always()
+        run: sed -n '1,60p' docs/DEV_DASHBOARD.md
 
       - name: Commit dashboard if changed
         shell: bash

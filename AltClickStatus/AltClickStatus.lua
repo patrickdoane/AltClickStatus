@@ -1,10 +1,6 @@
--- Alt-Click Status — Items & /use support (Issue #25)
+-- Alt-Click Status — Extend unit frames to Party/Raid (Issue #26)
 -- Classic Era + ElvUI
--- Features:
---   • Alt+LeftClick announces status for spells, items, and /use macros (incl. trinkets 13/14).
---   • Cooldowns: prefer GetActionCooldown(button.action); guard GetItemCooldown; slot cooldown for trinkets.
---   • Not-in-bags / not-equipped messaging
---   • Strict mouse-only gate (prevents Alt+keybind from triggering).
+-- Adds Alt+LeftClick announcements for ElvUI party/raid frames and Blizzard party frames.
 
 local A = CreateFrame("Frame", "AltClickStatusFrame")
 A.CHANNEL_MODE = "AUTO"; A.THROTTLE_SEC = 0.75
@@ -229,7 +225,7 @@ local function ActionSlotDisplayName(btn)
         -- Fallback to main GameTooltip if the custom one lacks SetAction
         GameTooltip:SetOwner(UIParent, "ANCHOR_NONE")
         GameTooltip:ClearLines()
-        if GameTooltip.SetAction then GameTooltip:SetAction(btn.action) end
+        if GameTooltip.SetAction then GameTooltip.SetAction(btn.action) end
         local txt = _G["GameTooltipTextLeft1"] and _G["GameTooltipTextLeft1"]:GetText() or nil
         GameTooltip:Hide()
         return txt
@@ -551,7 +547,8 @@ local function configureElvUIButtons()
     dprint("Configured ElvUI buttons:",conf,"overrides; hooked:",hook)
 end
 
--- ElvUI unitframes Alt+LClick -> status
+-- ===== Unit frames =====
+-- Announcer
 local function AnnounceUnit(unit)
     if not unit or not UnitExists(unit) then return end
     local hp, hm = UnitHealth(unit), UnitHealthMax(unit)
@@ -565,6 +562,8 @@ local function AnnounceUnit(unit)
         safeSend(("%s: %d%% HP, %d%% %s."):format(nm, hpPct, pPct, pn))
     end
 end
+
+-- Existing ElvUI single-unit hook
 local function hookElvUFFrame(name, unit)
     local f = _G[name]
     if not f or f.__ACS_UFHooked or not f.HookScript then return false end
@@ -575,21 +574,66 @@ local function hookElvUFFrame(name, unit)
     f.__ACS_UFHooked = true
     return true
 end
+
+-- New: generic unitframe hook (prefers frame.unit; has fallback)
+local function hookUnitFrameByName(name, fallbackUnit)
+    local f = _G[name]
+    if not f or f.__ACS_UFHooked or not f.HookScript then return false end
+    f:HookScript("OnMouseUp", function(self, btn)
+        if not A.ENABLE_UNITFRAMES then return end
+        if btn == "LeftButton" and IsAltKeyDown() then
+            local unit = (self.unit and UnitExists(self.unit) and self.unit) or fallbackUnit
+            if unit and UnitExists(unit) then AnnounceUnit(unit) end
+        end
+    end)
+    f.__ACS_UFHooked = true
+    return true
+end
+
+-- ElvUI: add Party and Raid grids
 local function configureElvUIUnitFrames()
     if not IsAddOnLoaded("ElvUI") then return end
     local hooked = 0
+    -- Singles
     if hookElvUFFrame("ElvUF_Player", "player") then hooked = hooked + 1 end
     if hookElvUFFrame("ElvUF_Target", "target") then hooked = hooked + 1 end
     if hookElvUFFrame("ElvUF_Focus", "focus") then hooked = hooked + 1 end
     if hookElvUFFrame("ElvUF_Pet", "pet") then hooked = hooked + 1 end
+    -- Party (ElvUI)
+    for i = 1, 5 do
+        local name = ("ElvUF_PartyGroup1UnitButton%u"):format(i)
+        if hookUnitFrameByName(name, ("party%u"):format(i)) then hooked = hooked + 1 end
+    end
+    -- Raid (ElvUI) — 8 groups × 5 buttons = up to 40
+    local idx = 0
+    for g = 1, 8 do
+        for i = 1, 5 do
+            idx = idx + 1
+            local name = ("ElvUF_RaidGroup%uUnitButton%u"):format(g, i)
+            if hookUnitFrameByName(name, ("raid%u"):format(idx)) then hooked = hooked + 1 end
+        end
+    end
     dprint("ElvUI unit frames hooked:", hooked)
+end
+
+-- Blizzard: Party unit frames (simple & safe)
+local function configureBlizzardPartyFrames()
+    local hooked = 0
+    for i = 1, 4 do
+        local name = ("PartyMemberFrame%u"):format(i)
+        if hookUnitFrameByName(name, ("party%u"):format(i)) then hooked = hooked + 1 end
+    end
+    if hooked > 0 then dprint("Blizzard party frames hooked:", hooked) end
 end
 
 -- Orchestration
 local pending=false
 local function ensureConfigured()
     if InCombatLockdown() then pending=true; A:RegisterEvent("PLAYER_REGEN_ENABLED"); dprint("In combat: deferring configuration."); return end
-    configureBlizzardButtons(); configureElvUIButtons(); configureElvUIUnitFrames()
+    configureBlizzardButtons()
+    configureElvUIButtons()
+    configureElvUIUnitFrames()
+    configureBlizzardPartyFrames()
 end
 A:RegisterEvent("PLAYER_LOGIN"); A:RegisterEvent("PLAYER_ENTERING_WORLD"); A:RegisterEvent("ADDON_LOADED")
 A:SetScript("OnEvent", function(self,event,arg1)

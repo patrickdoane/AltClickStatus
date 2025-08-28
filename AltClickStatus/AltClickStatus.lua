@@ -1,10 +1,6 @@
--- Alt-Click Status — Items & /use support (Issue #25)
+-- Alt-Click Status — Extend unit frames to Party/Raid (Issue #26)
 -- Classic Era + ElvUI
--- Features:
---   • Alt+LeftClick announces status for spells, items, and /use macros (incl. trinkets 13/14).
---   • Cooldowns: prefer GetActionCooldown(button.action); guard GetItemCooldown; slot cooldown for trinkets.
---   • Not-in-bags / not-equipped messaging
---   • Strict mouse-only gate (prevents Alt+keybind from triggering).
+-- Adds Alt+LeftClick announcements for ElvUI party/raid frames and Blizzard party frames.
 
 local A = CreateFrame("Frame", "AltClickStatusFrame")
 A.CHANNEL_MODE = "AUTO"; A.THROTTLE_SEC = 0.75
@@ -229,7 +225,7 @@ local function ActionSlotDisplayName(btn)
         -- Fallback to main GameTooltip if the custom one lacks SetAction
         GameTooltip:SetOwner(UIParent, "ANCHOR_NONE")
         GameTooltip:ClearLines()
-        if GameTooltip.SetAction then GameTooltip:SetAction(btn.action) end
+        if GameTooltip.SetAction then GameTooltip.SetAction(btn.action) end
         local txt = _G["GameTooltipTextLeft1"] and _G["GameTooltipTextLeft1"]:GetText() or nil
         GameTooltip:Hide()
         return txt
@@ -357,7 +353,6 @@ local function formatItemStatusFromIDs(kind, itemID, name, slotId, btn)
 end
 
 -- Macro parsing (spell + /use)
--- Remove bracketed conditionals anywhere in a line (e.g., [@cursor], [], [mod:shift]) and normalize spaces
 local function stripBracketConds(s)
     if not s or s == "" then return s end
     local prev
@@ -378,7 +373,7 @@ local function ExtractActionFromMacro(body)
             if cmd == "use" then
                 local rest = line:gsub("^%s*/%a+%s*", "")
                 rest = stripBracketConds(rest)
-                local a,b = rest:match("^%s*(%d+)%s+(%d+)%s*$") -- bag,slot (future)
+                local a,b = rest:match("^%s*(%d+)%s+(%d+)%s*$")
                 if a and b then
                     return { kind = "item-or-name", token = rest }
                 end
@@ -426,7 +421,7 @@ local function ExtractActionFromMacro(body)
     return nil
 end
 
--- Resolve action from button (spell/item/macro) (spell/item/macro)
+-- Resolve action from button
 local function getActionFromButton(btn)
     if not btn or not btn.action then return nil end
     local t, id = GetActionInfo(btn.action)
@@ -446,10 +441,8 @@ end
 -- Entry point (no cast on Alt+LeftClick)
 function AltClickStatus_AltClick(btn)
     if not btn then return end
-
     local isMouse = ACS_IsStrictMouse(btn)
     ACS_ClearFlags(btn)
-
     if not isMouse then return end
     if not IsAltKeyDown() then return end
 
@@ -460,25 +453,20 @@ function AltClickStatus_AltClick(btn)
     end
 
     if act.kind == "spell" then
-        safeSend(formatSpellStatus(act.token, btn))
-        return
+        safeSend(formatSpellStatus(act.token, btn)); return
     end
     if act.kind == "item" then
         local _, name = resolveItemToken(act.token)
-        safeSend(formatItemStatusFromIDs("item", act.token, name, nil, btn))
-        return
+        safeSend(formatItemStatusFromIDs("item", act.token, name, nil, btn)); return
     end
     if act.kind == "slot" then
         local itemID, name = resolveItemFromSlot(act.slotId or act.token)
-        safeSend(formatItemStatusFromIDs("slot", itemID, name, act.slotId or act.token, btn))
-        return
+        safeSend(formatItemStatusFromIDs("slot", itemID, name, act.slotId or act.token, btn)); return
     end
     if act.kind == "item-or-name" then
         local kind, itemID, name = resolveItemToken(act.token)
-        safeSend(formatItemStatusFromIDs(kind=="slot" and "slot" or "item", itemID, name, (kind=="slot" and act.token or nil), btn))
-        return
+        safeSend(formatItemStatusFromIDs(kind=="slot" and "slot" or "item", itemID, name, (kind=="slot" and act.token or nil), btn)); return
     end
-    -- Fallback for opaque macros: rely on action-slot cooldown/readiness
     local s, d = Cooldown_Action(btn)
     if s and d and d > 1.5 and (GetTime() < (s + d)) then
         local r = math.max(0,(s+d)-GetTime())
@@ -551,7 +539,7 @@ local function configureElvUIButtons()
     dprint("Configured ElvUI buttons:",conf,"overrides; hooked:",hook)
 end
 
--- ElvUI unitframes Alt+LClick -> status
+-- ===== Unit frames =====
 local function AnnounceUnit(unit)
     if not unit or not UnitExists(unit) then return end
     local hp, hm = UnitHealth(unit), UnitHealthMax(unit)
@@ -565,6 +553,7 @@ local function AnnounceUnit(unit)
         safeSend(("%s: %d%% HP, %d%% %s."):format(nm, hpPct, pPct, pn))
     end
 end
+
 local function hookElvUFFrame(name, unit)
     local f = _G[name]
     if not f or f.__ACS_UFHooked or not f.HookScript then return false end
@@ -572,26 +561,136 @@ local function hookElvUFFrame(name, unit)
         if not A.ENABLE_UNITFRAMES then return end
         if btn == "LeftButton" and IsAltKeyDown() then AnnounceUnit(unit) end
     end)
+    if A.DEBUG then
+        local n = f.GetName and f:GetName() or "<unnamed>"
+        dprint("hooked unitframe:", n, "unit:", tostring(f.unit))
+    end
     f.__ACS_UFHooked = true
     return true
 end
+
+local function hookUnitFrameByName(name, fallbackUnit)
+    local f = _G[name]
+    if not f or f.__ACS_UFHooked or not f.HookScript then return false end
+    f:HookScript("OnMouseUp", function(self, btn)
+        if not A.ENABLE_UNITFRAMES then return end
+        if btn == "LeftButton" and IsAltKeyDown() then
+            local unit = (self.unit and UnitExists(self.unit) and self.unit) or fallbackUnit
+            if unit and UnitExists(unit) then AnnounceUnit(unit) end
+        end
+    end)
+    f.__ACS_UFHooked = true
+    return true
+end
+
+local function ACS_HookUnitFrameRef(f)
+    if not f or f.__ACS_UFHooked or not f.HookScript then return false end
+    f:HookScript("OnMouseUp", function(self, btn)
+        if not A.ENABLE_UNITFRAMES then return end
+        if btn == "LeftButton" and IsAltKeyDown() then
+            local unit = self.unit
+            if unit and UnitExists(unit) then AnnounceUnit(unit) end
+        end
+    end)
+    f.__ACS_UFHooked = true
+    return true
+end
+
+local function ACS_EnumerateElvUFUnitButtons()
+    if type(EnumerateFrames) ~= "function" then return 0 end
+    local hooked = 0
+    local f = EnumerateFrames()
+    while f do
+        if not f.__ACS_UFHooked and f.HookScript and f.unit and type(f.unit)=="string" then
+            local n = f.GetName and f:GetName()
+            if n and (n:match("^ElvUF_Raid") or n:match("^ElvUF_Raid40") or n:match("^ElvUF_Party")) then
+                if ACS_HookUnitFrameRef(f) then hooked = hooked + 1 end
+            end
+        end
+        f = EnumerateFrames(f)
+    end
+    if hooked > 0 then dprint("ElvUI UF enumerate hooked:", hooked) end
+    return hooked
+end
+
+local function configureElvUIRaidPartyFrames()
+    if not IsAddOnLoaded("ElvUI") then return end
+    local hooked = 0
+    local function try(name)
+        local f = _G[name]
+        if ACS_HookUnitFrameRef(f) then hooked = hooked + 1 end
+    end
+    -- Party variants
+    for i=1,5 do
+        try(("ElvUF_PartyGroup1UnitButton%u"):format(i))
+        try(("ElvUF_PartyUnitButton%u"):format(i))
+    end
+    -- Raid grouped (8x5)
+    for g=1,8 do
+        for i=1,5 do
+            try(("ElvUF_RaidGroup%uUnitButton%u"):format(g, i))
+        end
+    end
+    -- Raid40 flat
+    for i=1,40 do
+        try(("ElvUF_Raid40UnitButton%u"):format(i))
+    end
+    -- Raid40 grouped (some profiles)
+    for g=1,8 do
+        for i=1,5 do
+            try(("ElvUF_Raid40Group%uUnitButton%u"):format(g, i))
+        end
+    end
+    -- Safety net: enumerate any leftover ElvUI unit buttons with .unit
+    hooked = hooked + ACS_EnumerateElvUFUnitButtons()
+    if hooked > 0 then dprint("ElvUI party/raid frames hooked:", hooked) end
+end
+
 local function configureElvUIUnitFrames()
     if not IsAddOnLoaded("ElvUI") then return end
     local hooked = 0
+    -- Singles
     if hookElvUFFrame("ElvUF_Player", "player") then hooked = hooked + 1 end
     if hookElvUFFrame("ElvUF_Target", "target") then hooked = hooked + 1 end
     if hookElvUFFrame("ElvUF_Focus", "focus") then hooked = hooked + 1 end
     if hookElvUFFrame("ElvUF_Pet", "pet") then hooked = hooked + 1 end
+    -- Party (ElvUI)
+    for i = 1, 5 do
+        local name = ("ElvUF_PartyGroup1UnitButton%u"):format(i)
+        if hookUnitFrameByName(name, ("party%u"):format(i)) then hooked = hooked + 1 end
+    end
+    -- Raid (ElvUI) — 8 groups × 5 buttons = up to 40
+    local idx = 0
+    for g = 1, 8 do
+        for i = 1, 5 do
+            idx = idx + 1
+            local name = ("ElvUF_RaidGroup%uUnitButton%u"):format(g, i)
+            if hookUnitFrameByName(name, ("raid%u"):format(idx)) then hooked = hooked + 1 end
+        end
+    end
     dprint("ElvUI unit frames hooked:", hooked)
+end
+
+local function configureBlizzardPartyFrames()
+    local hooked = 0
+    for i = 1, 4 do
+        local name = ("PartyMemberFrame%u"):format(i)
+        if hookUnitFrameByName(name, ("party%u"):format(i)) then hooked = hooked + 1 end
+    end
+    if hooked > 0 then dprint("Blizzard party frames hooked:", hooked) end
 end
 
 -- Orchestration
 local pending=false
 local function ensureConfigured()
     if InCombatLockdown() then pending=true; A:RegisterEvent("PLAYER_REGEN_ENABLED"); dprint("In combat: deferring configuration."); return end
-    configureBlizzardButtons(); configureElvUIButtons(); configureElvUIUnitFrames()
+    configureBlizzardButtons()
+    configureElvUIButtons()
+    configureElvUIUnitFrames()
+    configureElvUIRaidPartyFrames()
+    configureBlizzardPartyFrames()
 end
-A:RegisterEvent("PLAYER_LOGIN"); A:RegisterEvent("PLAYER_ENTERING_WORLD"); A:RegisterEvent("ADDON_LOADED")
+A:RegisterEvent("PLAYER_LOGIN"); A:RegisterEvent("PLAYER_ENTERING_WORLD"); A:RegisterEvent("ADDON_LOADED"); A:RegisterEvent("GROUP_ROSTER_UPDATE"); A:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 A:SetScript("OnEvent", function(self,event,arg1)
     if event=="PLAYER_LOGIN" then
         local _,_,_,iface=GetBuildInfo()
@@ -604,6 +703,9 @@ A:SetScript("OnEvent", function(self,event,arg1)
     elseif event=="PLAYER_REGEN_ENABLED" then
         A:UnregisterEvent("PLAYER_REGEN_ENABLED")
         if pending then pending=false; C_Timer.After(0, ensureConfigured) end
+    elseif event == "GROUP_ROSTER_UPDATE" or event == "ZONE_CHANGED_NEW_AREA" then
+        -- Frames can be created/renamed when you join a BG or group changes
+        C_Timer.After(0.6, ensureConfigured)
     end
 end)
 

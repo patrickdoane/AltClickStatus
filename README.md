@@ -1,169 +1,132 @@
-# Alt‑Click Status (Classic Era + ElvUI)
-<!-- Version & CI badges -->
-[![Latest Release](https://img.shields.io/github/v/release/patrickdoane/AltClickStatus?display_name=tag&sort=semver)](https://github.com/patrickdoane/AltClickStatus/releases/latest)
-[![Release on tag](https://img.shields.io/badge/CI-Release%20on%20tag-blue)](.github/workflows/release-on-tag.yml)
+# Alt-Click Status (Classic Era)
 
-Alt‑Click Status is a World of Warcraft **Classic Era** addon that lets you quickly communicate the status of your **spells** and **character** via **Alt + Left‑click**—inspired by Dota 2’s ping/announce system.
+[![Tag](https://img.shields.io/github/v/tag/patrickdoane/AltClickStatus?label=tag)](https://github.com/patrickdoane/AltClickStatus/tags)
+[![release-on-tag CI](https://github.com/patrickdoane/AltClickStatus/actions/workflows/release-on-tag.yml/badge.svg)](https://github.com/patrickdoane/AltClickStatus/actions/workflows/release-on-tag.yml)
+[![Release](https://img.shields.io/github/v/release/patrickdoane/AltClickStatus)](https://github.com/patrickdoane/AltClickStatus/releases)
+[![CurseForge Downloads](https://img.shields.io/curseforge/dt/1333613?label=CurseForge\&logo=curseforge)](https://legacy.curseforge.com/wow/addons/altclickstatus)
 
-* **Alt+Left‑click a spell** → prints its status (Ready / Cooldown with seconds / Recharging charges / On GCD, plus Range info) to your party/raid.
-* **Alt+Left‑click Player/Target frames** → prints **HP%** and current **power** (Mana/Rage/Energy/etc.).
-* **Alt+Left‑click does *not cast*** the spell (secure modifier override)—it only announces.
-* Auto‑selects a chat channel (PARTY/RAID/SAY) or lets you force one.
+Quickly announce your character state with **Alt+LeftClick** — inspired by Dota 2’s Alt-click pings.
 
-> **Classic Era target**: Interface `11507`. ElvUI is **optional** (supported).
+> **Supports:** World of Warcraft **Classic Era (1.15.x)**. Optimized for **ElvUI** and Blizzard default action bars.
 
 ---
 
-## Features
+## ✨ Features
 
-* Spell announcements with cooldowns, charges, GCD status, and in‑range hint
-* Player/Target HP% + power announcements
-* Does **not** trigger the spell on Alt+Left‑click (secure override)
-* Works with **Blizzard** action bars and **ElvUI** bars
-* Lightweight, combat‑safe configuration (defers secure changes until out of combat)
+* **Action buttons:** Alt+LeftClick to announce the button’s spell **or** item status to party/raid chat.
+
+  * Spells: **Ready**, **On Cooldown (Xs)**, **On GCD (Xs)**, **Not enough *Power*** (e.g., Mana/Rage/Energy/Focus with `(have/need)` when available).
+  * Items/consumables/trinkets: **Ready**, **On Cooldown (Xs)**, **Not in Bags**, **Not Equipped** (for `/use 13`/`14`).
+  * Macro-aware: understands `/cast` and `/castsequence` with conditionals (e.g., `[@cursor]`, empty `[]`).
+  * `/use` support: item **names**, `item:ID`, and **trinket slots** `13` / `14`.
+* **ElvUI unitframes:** Alt+LeftClick announces **HP%** and **Power%** for player/target/focus/pet.
+* **Mouse-only gate:** Only **Alt+LeftClick** counts — **Alt+keybinds (e.g., Alt+1)** won’t trigger announcements.
+* **Range suffix toggle:** Hidden by default; opt-in with `/acs showrange on`.
+* **Non-casting:** Alt+LeftClick does **not** activate the action; it only announces.
+* **Smart channel** selection: `INSTANCE_CHAT` > `RAID` > `PARTY` > `SAY`.
+* Lightweight and Classic-friendly (guards Classic APIs like `GetItemCooldown`).
 
 ---
 
-## Installation
+## 🛠 Installation
 
-1. Download the latest release ZIP from **GitHub Releases**.
-2. Extract to:
+**From CurseForge (recommended):**
+
+* Project: `AltClickStatus` (ID **1333613**). Install via your addon manager.
+
+**Manual:**
+
+1. Download a release ZIP (`AltClickStatus-vX.Y.Z-classic.zip`).
+2. Extract to your WoW Classic Era folder so the structure is:
 
    ```
-   World of Warcraft/_classic_/Interface/AddOns/AltClickStatus/
-     AltClickStatus.toc
-     AltClickStatus.lua
+   _classic_era_/Interface/AddOns/AltClickStatus/AltClickStatus.toc
+   _classic_era_/Interface/AddOns/AltClickStatus/AltClickStatus.lua
    ```
-3. Launch the game → **AddOns** (character select) → enable **Alt‑Click Status**.
-4. In‑game, run `/reload`. You should see:
-
-   ```
-   Alt‑Click Status loaded (Interface 11507). Use /acs for options.
-   ```
-
-> If it shows as out‑of‑date, tick **Load out of date AddOns** or update to a build matching your client’s Interface number.
+3. Restart the game or `/reload`.
 
 ---
 
-## Usage
+## 🚀 Usage
 
-### Announcing
+### Action bars
 
-* **Spells**: Hold **Alt** and **Left‑click** an action button.
-* **Player frame**: Alt+Left‑click → “I have X% HP, Y% Power.”
-* **Target frame**: Alt+Left‑click → “Name: X% HP, Y% Power.”
+* **Alt+LeftClick** a spell or item button.
+* Works with Blizzard bars and **ElvUI** bars.
+* The addon won’t cast; it only prints a message to group chat.
 
-### Slash Commands
+### ElvUI unit frames
 
-| Command                                 | Description                                             |
-| --------------------------------------- | ------------------------------------------------------- |
-| `/acs`                                  | Show usage/help.                                        |
-| `/acs auto`                             | Auto channel selection (default).                       |
-| `/acs say` / `/acs party` / `/acs raid` | Force output channel.                                   |
-| `/acs toggle bar`                       | Enable/disable action‑bar Alt‑click behavior.           |
-| `/acs toggle unit`                      | Enable/disable unit‑frame Alt‑click behavior.           |
-| `/acs toggle elv`                       | Enable/disable ElvUI‑specific hooks.                    |
-| `/acs hook elv`                         | Re‑run configuration (useful after UI profile changes). |
-| `/acs debug on` / `off`                 | Toggle debug prints.                                    |
+* **Alt+LeftClick** on Player / Target / Focus / Pet frames to announce HP% and Power%.
 
-### Channel Auto‑Selection
+### Slash commands
 
-Priority: **RAID** → **PARTY** → **SAY** (unless forced via `/acs`).
+* `/acs debug on|off` — verbose debug prints.
+* `/acs hook elv` — reconfigure hooks (use out of combat).
+* `/acs showrange on|off|toggle` — show/hide range suffix in messages.
 
 ---
 
-## ElvUI Support
+## 🧪 Handy test macros
 
-* Hooks **ElvUI\_Bar** buttons and **ElvUF\_Player/Target** frames.
-* If bars didn’t hook on login, use `/acs hook elv` once.
-
----
-
-## How “no‑cast on Alt‑click” works
-
-The addon sets secure attributes on each action button **out of combat**:
-
-```lua
-btn:SetAttribute("alt-type1", "macro")
-btn:SetAttribute("alt-macrotext1", "/run AltClickStatus_AltClick(ButtonName)")
+```macro
+#showtooltip
+/cast [@cursor][] Blizzard
 ```
 
-This sends the click to the addon’s function instead of casting. If you enter the world while in combat, the addon defers configuration and completes it on `PLAYER_REGEN_ENABLED`.
-
----
-
-## Troubleshooting
-
-**I don’t see the load message and `/acs` does nothing**
-
-* Verify the folder and names:
-
-  ```
-  _classic_/Interface/AddOns/AltClickStatus/AltClickStatus.toc
-  ```
-* Ensure the folder name **AltClickStatus** matches the `.toc`.
-* Check your client interface number with `/dump select(4, GetBuildInfo())`.
-
-**Buttons still cast on Alt+Left‑click**
-
-* Turn on debug: `/acs debug on`, then `/reload`.
-* If a specific button isn’t overridden, get its name:
-
-  ```
-  /run print(GetMouseFocus():GetName())
-  ```
-
-  Open an issue with that name; we’ll add its prefix.
-
-**I got an `ADDON_ACTION_BLOCKED` / taint error**
-
-* That usually means a secure change was attempted **in combat**. The addon defers setup; if you still get errors, report steps to reproduce (were you entering the world in combat? which UI?)
-
----
-
-## Development
-
-### Repo Structure
-
-```
-AltClickStatus/
- ├─ AltClickStatus.toc
- └─ AltClickStatus.lua
+```macro
+#showtooltip
+/use 13
 ```
 
-### Building/Packaging
-
-* Tag a version (e.g., `v0.3.0`) and attach a ZIP containing the **AltClickStatus/** folder with both files.
-
-### Code Notes
-
-* Uses only `HookScript` for read‑only hooks.
-* No `RegisterForClicks` on secure buttons.
-* Secure attribute overrides are applied out of combat; configuration is retried after `PLAYER_REGEN_ENABLED`.
+```macro
+#showtooltip Major Healing Potion
+/use Major Healing Potion
+```
 
 ---
 
-## Roadmap
+## ⚙️ How it works (tech notes)
 
-* Party/Raid **mouseover** announcements
-* Item/Trinket cooldown announcements
-* Aura and Buff/debuff announcements
-* Message template customization per class/spec
-* Localization
+* Hooks action buttons and injects a secure **`alt-type1=macro`** attribute that runs a tiny script to announce status.
+* Prefers **`GetActionCooldown(action)`** for accurate cooldowns on bar slots; safely falls back to `GetItemCooldown`/`GetInventoryItemCooldown` where applicable.
+* Item names are resolved via:
 
----
-
-## Contributing
-
-Issues and PRs are welcome! Please include:
-
-* Client flavor + Interface number (e.g., Classic Era `11507`)
-* Steps to reproduce
-* Any error text
-* If a button isn’t overridden, include `GetMouseFocus():GetName()` output
+  1. action-slot tooltip scan; 2) bag link/name; 3) `GetItemInfo` cache; 4) inventory link (trinket slots). Falls back to `Item #ID` when uncached.
+* Strict mouse gating records **PreClick** + **OnMouseDown** timing to avoid Alt+keybind false positives.
 
 ---
 
-## License
+## ✅ Current compatibility
 
-MIT. See `LICENSE`.
+* **Client:** Classic Era (1.15.x).
+* **Action bars:** Blizzard default, **ElvUI**.
+* **Unit frames:** **ElvUI** (player/target/focus/pet).
+
+> **Planned:** party/raid frames (ElvUI + default), bag-slot `/use <bag> <slot>`, config panel, localization & templates. See the issue tracker.
+
+---
+
+## 🧯 Troubleshooting
+
+* **No message on Alt+Click:** Ensure you’re **out of combat** for initial hook; run `/acs hook elv`, then `/reload` if needed.
+* **Items say `Not in Bags` but you have it:** If it’s a brand new drop, the client cache may be cold — use the item once or reopen bags.
+* **Range always `N/A`:** Some items don’t report range from action slots; try a spell on the bar to verify range suffix.
+* **Alt+keybind announces:** Update to a version ≥ `v0.3.0k` where the **mouse-only gate** is enforced.
+
+---
+
+## 🤝 Contributing
+
+* File bugs/ideas in **GitHub Issues**. Labels used: `status/todo`, `status/doing`, `status/done`, `type/bug`, `type/feat`.
+* See `docs/DEV_DASHBOARD.md` for an auto-generated work queue.
+* PRs welcome! Keep commits focused; include a short **Testing** section.
+
+### Releases (CI)
+
+* Tag-driven via GitHub Actions: push tag `vX.Y.Z` → package with **BigWigs Packager** → upload to **CurseForge**.
+* Changelogs follow **Keep a Changelog** style; version badge updated on release.
+
+### License
+
+* MIT. See `LICENSE`.

@@ -6,6 +6,7 @@ and [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 ### Added
 - ElvUI unit frames: Alt+LeftClick announces HP/Power (player, target, focus, pet).
+- Finalized Items & `/use` support: direct items on bars, `/use item:ID`, item names, and trinket slots 13/14.
 
 ### Changed
 - 
@@ -15,6 +16,9 @@ and [Semantic Versioning](https://semver.org/).
 - Announcements now report **Not enough _Resource_** (Mana/Rage/Energy/Focus) when a spell is otherwise ready but you lack resources. Includes `(have/need)` when available via `GetSpellPowerCost`. (#17)
 - Hidden runtime toggle `/acs showrange on|off|toggle` to include/exclude range text (default OFF).
 - `/acs showrange` toggle now reliably adds/removes range suffix. Uses action-slot range with spell fallback.
+- Macro parsing for `/cast` (handles `[@cursor]`, `[]`, `castsequence`).
+- Item/trinket announcements now use proper names (tooltip/bag/inventory fallback) instead of raw IDs.
+- Guarded Classic cooldown APIs; prefer action-slot cooldowns.
 
 ### Removed
 - 

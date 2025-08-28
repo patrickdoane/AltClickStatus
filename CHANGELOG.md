@@ -15,8 +15,7 @@ This format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 
 ### Added
-
--
+- Alt+LeftClick party/raid unit frames (ElvUI party/raid incl. Raid40, Blizzard party).
 
 
 
@@ -39,8 +38,7 @@ This format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 
 ### Notes for Users
-
--
+- Announce teammate HP/Power by Alt+LeftClicking their unit frame in party/raid/battlegrounds.
 
 
 

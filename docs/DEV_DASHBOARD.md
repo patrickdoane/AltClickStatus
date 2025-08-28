@@ -1,6 +1,6 @@
 # Alt-Click Status — Dev Dashboard (auto-generated)
 
-_Last updated: 2025-08-28 12:32 UTC_
+_Last updated: 2025-08-28 12:35 UTC_
 
 Repo: `patrickdoane/AltClickStatus`
 
@@ -21,10 +21,10 @@ Repo: `patrickdoane/AltClickStatus`
 - [ ] Party/Raid frames (ElvUI + Blizzard) (#26)
 
 ## DOING
-- [x] Items & /use support (trinkets/consumables) (#25)
+_(none)_
 
 ## DONE
-_(none)_
+- [x] Items & /use support (trinkets/consumables) (#25)
 
 ## Unlabeled (triage)
 _(none)_

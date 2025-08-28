@@ -1,6 +1,6 @@
 # Alt-Click Status — Dev Dashboard (auto-generated)
 
-_Last updated: 2025-08-28 19:11 UTC_
+_Last updated: 2025-08-28 19:12 UTC_
 
 Repo: `patrickdoane/AltClickStatus`
 
@@ -20,7 +20,7 @@ Repo: `patrickdoane/AltClickStatus`
 - [ ] Channel routing refinements (#27)
 
 ## DOING
-- [ ] Party/Raid frames (ElvUI + Blizzard) (#26)
+- [x] Party/Raid frames (ElvUI + Blizzard) (#26)
 
 ## DONE
 - [x] Items & /use support (trinkets/consumables) (#25)

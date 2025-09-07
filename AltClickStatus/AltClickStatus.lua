@@ -554,6 +554,19 @@ local function AnnounceUnit(unit)
     end
 end
 
+local function AnnounceAura(unit, index, filter)
+    if not unit or not index then return end
+    local name, _, count, _, duration, expires = UnitAura(unit, index, filter)
+    if not name then return end
+    if unit == "player" then
+        local remain = (expires and duration and duration > 0) and (expires - GetTime()) or 0
+        safeSend(("%s > %ds left"):format(name, math.floor(remain + 0.5)))
+    else
+        local stacks = (count and count > 1) and (" x" .. count) or ""
+        safeSend(("%s%s"):format(name, stacks))
+    end
+end
+
 local function hookElvUFFrame(name, unit)
     local f = _G[name]
     if not f or f.__ACS_UFHooked or not f.HookScript then return false end
@@ -680,6 +693,37 @@ local function configureBlizzardPartyFrames()
     if hooked > 0 then dprint("Blizzard party frames hooked:", hooked) end
 end
 
+local function hookAuraButton(btn, unit, filter)
+    if not btn or btn.__ACS_AuraHooked or not btn.HookScript then return false end
+    btn:HookScript("OnMouseUp", function(self, mouseBtn)
+        if not A.ENABLE_UNITFRAMES then return end
+        if mouseBtn ~= "LeftButton" or not IsAltKeyDown() then return end
+        AnnounceAura(unit, self:GetID(), filter)
+    end)
+    btn.__ACS_AuraHooked = true
+    return true
+end
+
+local function configurePlayerAuras()
+    local hooked = 0
+    local max = BUFF_MAX_DISPLAY or 40
+    for i = 1, max do
+        local btn = _G[("BuffButton%u"):format(i)]
+        if hookAuraButton(btn, "player", "HELPFUL") then hooked = hooked + 1 end
+    end
+    if hooked > 0 then dprint("Player auras hooked:", hooked) end
+end
+
+local function configureTargetDebuffs()
+    local hooked = 0
+    local max = MAX_TARGET_DEBUFFS or 16
+    for i = 1, max do
+        local btn = _G[("TargetFrameDebuff%u"):format(i)]
+        if hookAuraButton(btn, "target", "HARMFUL") then hooked = hooked + 1 end
+    end
+    if hooked > 0 then dprint("Target debuffs hooked:", hooked) end
+end
+
 -- Orchestration
 local pending=false
 local function ensureConfigured()
@@ -689,6 +733,8 @@ local function ensureConfigured()
     configureElvUIUnitFrames()
     configureElvUIRaidPartyFrames()
     configureBlizzardPartyFrames()
+    configurePlayerAuras()
+    configureTargetDebuffs()
 end
 A:RegisterEvent("PLAYER_LOGIN"); A:RegisterEvent("PLAYER_ENTERING_WORLD"); A:RegisterEvent("ADDON_LOADED"); A:RegisterEvent("GROUP_ROSTER_UPDATE"); A:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 A:SetScript("OnEvent", function(self,event,arg1)

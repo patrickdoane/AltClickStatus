@@ -20,7 +20,7 @@ Quickly announce your character state with **Alt+LeftClick** — inspired by Dot
   * Macro-aware: understands `/cast` and `/castsequence` with conditionals (e.g., `[@cursor]`, empty `[]`).
   * `/use` support: item **names**, `item:ID`, and **trinket slots** `13` / `14`.
 * **ElvUI unitframes:** Alt+LeftClick announces **HP%** and **Power%** for player/target/focus/pet.
-* **Auras:** Alt+LeftClick your buff row or a target's debuff to share remaining time or stack count.
+* **Auras:** Alt+LeftClick your buff row or a target's debuff to share remaining time or stack count — works with Blizzard and ElvUI widgets.
 * **Mouse-only gate:** Only **Alt+LeftClick** counts — **Alt+keybinds (e.g., Alt+1)** won’t trigger announcements.
 * **Range suffix toggle:** Hidden by default; opt-in with `/acs showrange on`.
 * **Non-casting:** Alt+LeftClick does **not** activate the action; it only announces.
@@ -62,7 +62,7 @@ Quickly announce your character state with **Alt+LeftClick** — inspired by Dot
 
 ### Auras
 
-* **Alt+LeftClick** your buff row to share remaining duration.
+* **Alt+LeftClick** your buff row to share remaining duration. Supports both Blizzard and ElvUI aura bars.
 * **Alt+LeftClick** a target's debuff to report its name and stacks.
 
 ### Slash commands

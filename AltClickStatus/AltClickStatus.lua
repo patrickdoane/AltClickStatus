@@ -724,6 +724,28 @@ local function configureTargetDebuffs()
     if hooked > 0 then dprint("Target debuffs hooked:", hooked) end
 end
 
+local function configureElvUIPlayerAuras()
+    if not IsAddOnLoaded("ElvUI") then return end
+    local hooked = 0
+    local max = BUFF_MAX_DISPLAY or 40
+    for i = 1, max do
+        local btn = _G[("ElvUIPlayerBuffsButton%u"):format(i)]
+        if hookAuraButton(btn, "player", "HELPFUL") then hooked = hooked + 1 end
+    end
+    if hooked > 0 then dprint("ElvUI player auras hooked:", hooked) end
+end
+
+local function configureElvUITargetDebuffs()
+    if not IsAddOnLoaded("ElvUI") then return end
+    local hooked = 0
+    local max = MAX_TARGET_DEBUFFS or 40
+    for i = 1, max do
+        local btn = _G[("ElvUF_TargetDebuffsButton%u"):format(i)]
+        if hookAuraButton(btn, "target", "HARMFUL") then hooked = hooked + 1 end
+    end
+    if hooked > 0 then dprint("ElvUI target debuffs hooked:", hooked) end
+end
+
 -- Orchestration
 local pending=false
 local function ensureConfigured()
@@ -735,6 +757,8 @@ local function ensureConfigured()
     configureBlizzardPartyFrames()
     configurePlayerAuras()
     configureTargetDebuffs()
+    configureElvUIPlayerAuras()
+    configureElvUITargetDebuffs()
 end
 A:RegisterEvent("PLAYER_LOGIN"); A:RegisterEvent("PLAYER_ENTERING_WORLD"); A:RegisterEvent("ADDON_LOADED"); A:RegisterEvent("GROUP_ROSTER_UPDATE"); A:RegisterEvent("ZONE_CHANGED_NEW_AREA")
 A:SetScript("OnEvent", function(self,event,arg1)

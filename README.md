@@ -119,7 +119,6 @@ Quickly announce your character state with **Alt+LeftClick** — inspired by Dot
 ## 🤝 Contributing
 
 * File bugs/ideas in **GitHub Issues**. Labels used: `status/todo`, `status/doing`, `status/done`, `type/bug`, `type/feat`.
-* See `docs/DEV_DASHBOARD.md` for an auto-generated work queue.
 * PRs welcome! Keep commits focused; include a short **Testing** section.
 
 ### Releases (CI)

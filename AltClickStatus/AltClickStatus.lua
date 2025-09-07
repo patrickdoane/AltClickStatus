@@ -760,7 +760,7 @@ local function ensureConfigured()
     configureElvUIPlayerAuras()
     configureElvUITargetDebuffs()
 end
-A:RegisterEvent("PLAYER_LOGIN"); A:RegisterEvent("PLAYER_ENTERING_WORLD"); A:RegisterEvent("ADDON_LOADED"); A:RegisterEvent("GROUP_ROSTER_UPDATE"); A:RegisterEvent("ZONE_CHANGED_NEW_AREA")
+A:RegisterEvent("PLAYER_LOGIN"); A:RegisterEvent("PLAYER_ENTERING_WORLD"); A:RegisterEvent("ADDON_LOADED"); A:RegisterEvent("GROUP_ROSTER_UPDATE"); A:RegisterEvent("ZONE_CHANGED_NEW_AREA"); A:RegisterEvent("UNIT_AURA"); A:RegisterEvent("PLAYER_TARGET_CHANGED")
 A:SetScript("OnEvent", function(self,event,arg1)
     if event=="PLAYER_LOGIN" then
         local _,_,_,iface=GetBuildInfo()
@@ -776,6 +776,23 @@ A:SetScript("OnEvent", function(self,event,arg1)
     elseif event == "GROUP_ROSTER_UPDATE" or event == "ZONE_CHANGED_NEW_AREA" then
         -- Frames can be created/renamed when you join a BG or group changes
         C_Timer.After(0.6, ensureConfigured)
+    elseif event == "UNIT_AURA" then
+        if arg1 == "player" then
+            C_Timer.After(0, function()
+                configurePlayerAuras()
+                configureElvUIPlayerAuras()
+            end)
+        elseif arg1 == "target" then
+            C_Timer.After(0, function()
+                configureTargetDebuffs()
+                configureElvUITargetDebuffs()
+            end)
+        end
+    elseif event == "PLAYER_TARGET_CHANGED" then
+        C_Timer.After(0, function()
+            configureTargetDebuffs()
+            configureElvUITargetDebuffs()
+        end)
     end
 end)
 

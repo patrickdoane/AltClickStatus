@@ -564,13 +564,10 @@ local function AnnounceAura(unit, index, filter)
     else
         local stacks = (count and count > 1) and (" x" .. count) or ""
         local remain = (expires and duration and duration > 0) and (expires - GetTime()) or nil
-        local me = UnitName("player") or "Player"
-        local guild = GetGuildInfo("player")
-        if guild then me = string.format("%s (%s)", me, guild) end
         local tgt = UnitName(unit) or unit
-        local aff = UnitIsFriend("player", unit) and "Ally" or "Enemy"
         local remainTxt = remain and string.format(" (%d seconds remaining)", math.floor(remain + 0.5)) or ""
-        safeSend(string.format("Allies %s %s %s affected by %s%s%s", me, aff, tgt, name, stacks, remainTxt))
+        safeSend(string.format("%s affected by %s%s%s", tgt, name, stacks, remainTxt))
+
     end
 end
 

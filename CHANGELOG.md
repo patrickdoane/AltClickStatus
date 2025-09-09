@@ -21,7 +21,8 @@ This format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
 
 
 ### Changed
-- Target buff/debuff announcements now detail player and target with remaining duration.
+- Target buff/debuff announcements now show the target with remaining duration.
+
 
 ### Fixed
 

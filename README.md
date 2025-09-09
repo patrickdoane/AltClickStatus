@@ -20,6 +20,7 @@ Quickly announce your character state with **Alt+LeftClick** — inspired by Dot
   * Macro-aware: understands `/cast` and `/castsequence` with conditionals (e.g., `[@cursor]`, empty `[]`).
   * `/use` support: item **names**, `item:ID`, and **trinket slots** `13` / `14`.
 * **ElvUI unitframes:** Alt+LeftClick announces **HP%** and **Power%** for player/target/focus/pet.
+* **Auras:** Alt+LeftClick your buff row or a target's buff/debuff to share remaining time or stack count — works with Blizzard and ElvUI widgets.
 * **Mouse-only gate:** Only **Alt+LeftClick** counts — **Alt+keybinds (e.g., Alt+1)** won’t trigger announcements.
 * **Range suffix toggle:** Hidden by default; opt-in with `/acs showrange on`.
 * **Non-casting:** Alt+LeftClick does **not** activate the action; it only announces.
@@ -58,6 +59,11 @@ Quickly announce your character state with **Alt+LeftClick** — inspired by Dot
 ### ElvUI unit frames
 
 * **Alt+LeftClick** on Player / Target / Focus / Pet frames to announce HP% and Power%.
+
+### Auras
+
+* **Alt+LeftClick** your buff row to share remaining duration. Supports both Blizzard and ElvUI aura bars.
+* **Alt+LeftClick** a target's buff or debuff to report its name and stacks (Blizzard UI: debuffs only).
 
 ### Slash commands
 
@@ -113,6 +119,7 @@ Quickly announce your character state with **Alt+LeftClick** — inspired by Dot
 * **Items say `Not in Bags` but you have it:** If it’s a brand new drop, the client cache may be cold — use the item once or reopen bags.
 * **Range always `N/A`:** Some items don’t report range from action slots; try a spell on the bar to verify range suffix.
 * **Alt+keybind announces:** Update to a version ≥ `v0.3.0k` where the **mouse-only gate** is enforced.
+* **Need the frame name under the cursor:** Some clients omit `GetMouseFocus`; run `/run print(MouseFocus and MouseFocus:GetName() or "nil")` while hovering to report it.
 
 ---
 

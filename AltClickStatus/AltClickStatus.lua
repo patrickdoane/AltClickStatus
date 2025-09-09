@@ -567,6 +567,7 @@ local function AnnounceAura(unit, index, filter)
         local tgt = UnitName(unit) or unit
         local remainTxt = remain and string.format(" (%d seconds remaining)", math.floor(remain + 0.5)) or ""
         safeSend(string.format("%s affected by %s%s%s", tgt, name, stacks, remainTxt))
+
     end
 end
 

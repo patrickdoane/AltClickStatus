@@ -798,12 +798,14 @@ A:SetScript("OnEvent", function(self,event,arg1)
             C_Timer.After(0, function()
                 configureTargetDebuffs()
                 configureElvUITargetDebuffs()
+                configureElvUITargetBuffs()
             end)
         end
     elseif event == "PLAYER_TARGET_CHANGED" then
         C_Timer.After(0, function()
             configureTargetDebuffs()
             configureElvUITargetDebuffs()
+            configureElvUITargetBuffs()
         end)
     end
 end)

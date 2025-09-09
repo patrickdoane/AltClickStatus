@@ -729,10 +729,21 @@ local function configureElvUIPlayerAuras()
     local hooked = 0
     local max = BUFF_MAX_DISPLAY or 40
     for i = 1, max do
-        local btn = _G[("ElvUIPlayerBuffsButton%u"):format(i)]
+        local btn = _G[("ElvUIPlayerBuffsAuraButton%u"):format(i)]
         if hookAuraButton(btn, "player", "HELPFUL") then hooked = hooked + 1 end
     end
     if hooked > 0 then dprint("ElvUI player auras hooked:", hooked) end
+end
+
+local function configureElvUITargetBuffs()
+    if not IsAddOnLoaded("ElvUI") then return end
+    local hooked = 0
+    local max = MAX_TARGET_BUFFS or 40
+    for i = 1, max do
+        local btn = _G[("ElvUF_TargetBuffsButton%u"):format(i)]
+        if hookAuraButton(btn, "target", "HELPFUL") then hooked = hooked + 1 end
+    end
+    if hooked > 0 then dprint("ElvUI target buffs hooked:", hooked) end
 end
 
 local function configureElvUITargetDebuffs()
@@ -758,6 +769,7 @@ local function ensureConfigured()
     configurePlayerAuras()
     configureTargetDebuffs()
     configureElvUIPlayerAuras()
+    configureElvUITargetBuffs()
     configureElvUITargetDebuffs()
 end
 A:RegisterEvent("PLAYER_LOGIN"); A:RegisterEvent("PLAYER_ENTERING_WORLD"); A:RegisterEvent("ADDON_LOADED"); A:RegisterEvent("GROUP_ROSTER_UPDATE"); A:RegisterEvent("ZONE_CHANGED_NEW_AREA"); A:RegisterEvent("UNIT_AURA"); A:RegisterEvent("PLAYER_TARGET_CHANGED")

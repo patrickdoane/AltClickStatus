@@ -65,6 +65,7 @@ Quickly announce your character state with **Alt+LeftClick** — inspired by Dot
 * **Alt+LeftClick** your buff row to share remaining duration. Supports both Blizzard and ElvUI aura bars.
 * **Alt+LeftClick** a target's buff or debuff to report its name and stacks (Blizzard UI: debuffs only).
 
+
 ### Slash commands
 
 * `/acs debug on|off` — verbose debug prints.

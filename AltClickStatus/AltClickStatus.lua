@@ -749,6 +749,17 @@ local function configureElvUIPlayerAuras()
     if hooked > 0 then dprint("ElvUI player auras hooked:", hooked) end
 end
 
+local function configureElvUIPlayerDebuffs()
+    if not IsAddOnLoaded("ElvUI") then return end
+    local hooked = 0
+    local max = BUFF_MAX_DISPLAY or 40
+    for i = 1, max do
+        local btn = _G[("ElvUIPlayerDebuffsAuraButton%u"):format(i)]
+        if hookAuraButton(btn, "player", "HARMFUL") then hooked = hooked + 1 end
+    end
+    if hooked > 0 then dprint("ElvUI player debuffs hooked:", hooked) end
+end
+
 local function configureElvUITargetBuffs()
     if not IsAddOnLoaded("ElvUI") then return end
     local hooked = 0
@@ -783,6 +794,7 @@ local function ensureConfigured()
     configurePlayerAuras()
     configureTargetDebuffs()
     configureElvUIPlayerAuras()
+    configureElvUIPlayerDebuffs()
     configureElvUITargetBuffs()
     configureElvUITargetDebuffs()
 end
@@ -807,6 +819,7 @@ A:SetScript("OnEvent", function(self,event,arg1)
             C_Timer.After(0, function()
                 configurePlayerAuras()
                 configureElvUIPlayerAuras()
+                configureElvUIPlayerDebuffs()
             end)
         elseif arg1 == "target" then
             C_Timer.After(0, function()

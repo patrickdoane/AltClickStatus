@@ -27,6 +27,17 @@ local function safeSend(msg)
     SendChatMessage(msg, chooseChannel())
 end
 
+local function formatTime(secs)
+    secs = math.floor(secs + 0.5)
+    local h = math.floor(secs/3600); secs = secs % 3600
+    local m = math.floor(secs/60); local s = secs % 60
+    local t = {}
+    if h > 0 then table.insert(t, h .. "h") end
+    if m > 0 then table.insert(t, m .. "m") end
+    if s > 0 or #t == 0 then table.insert(t, s .. "s") end
+    return table.concat(t, " ")
+end
+
 -- Mouse-only gate (issue #12)
 local MOUSE_WINDOW = 0.50 -- seconds
 local function ACS_PreClick(self, button)
@@ -560,14 +571,13 @@ local function AnnounceAura(unit, index, filter)
     if not name then return end
     if unit == "player" then
         local remain = (expires and duration and duration > 0) and (expires - GetTime()) or 0
-        safeSend(("%s > %ds left"):format(name, math.floor(remain + 0.5)))
+        safeSend(("%s > %s left"):format(name, formatTime(remain)))
     else
         local stacks = (count and count > 1) and (" x" .. count) or ""
         local remain = (expires and duration and duration > 0) and (expires - GetTime()) or nil
         local tgt = UnitName(unit) or unit
-        local remainTxt = remain and string.format(" (%d seconds remaining)", math.floor(remain + 0.5)) or ""
+        local remainTxt = remain and string.format(" (%s remaining)", formatTime(remain)) or ""
         safeSend(string.format("%s affected by %s%s%s", tgt, name, stacks, remainTxt))
-
     end
 end
 

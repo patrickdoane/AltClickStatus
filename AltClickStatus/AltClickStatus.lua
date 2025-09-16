@@ -569,14 +569,32 @@ local function AnnounceAura(unit, index, filter)
     if not unit or not index then return end
     local name, _, count, _, duration, expires = UnitAura(unit, index, filter)
     if not name then return end
+
+    local hasDuration = duration and duration > 0 and expires
+    local remain = 0
+    if hasDuration then
+        remain = math.max(0, (expires or 0) - GetTime())
+    end
+    local remainFormatted = formatTime(remain)
+
     if unit == "player" then
-        local remain = (expires and duration and duration > 0) and (expires - GetTime()) or 0
-        safeSend(("%s > %s left"):format(name, formatTime(remain)))
+        if filter and string.find(filter, "HARMFUL", 1, true) then
+            local displayName = name
+            if count and count > 1 then
+                displayName = string.format("%s x%d", name, count)
+            end
+            if hasDuration then
+                safeSend(string.format("Affected by: %s (%s remaining)", displayName, remainFormatted))
+            else
+                safeSend(string.format("Affected by: %s", displayName))
+            end
+        else
+            safeSend(("%s > %s left"):format(name, remainFormatted))
+        end
     else
         local stacks = (count and count > 1) and (" x" .. count) or ""
-        local remain = (expires and duration and duration > 0) and (expires - GetTime()) or nil
+        local remainTxt = hasDuration and string.format(" (%s remaining)", remainFormatted) or ""
         local tgt = UnitName(unit) or unit
-        local remainTxt = remain and string.format(" (%s remaining)", formatTime(remain)) or ""
         safeSend(string.format("%s affected by %s%s%s", tgt, name, stacks, remainTxt))
     end
 end
